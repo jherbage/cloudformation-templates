@@ -1,0 +1,59 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  TemplateS3Bucket:
+    Description: s£ Bucket with the stack templates at top level
+    Type: String
+    Default: 'https://s3.eu-west-2.amazonaws.com/jherbagecftemplates'
+  BastionAMIImage:
+    Description: AMI to use for bastion host
+    Type: AWS::EC2::Image::Id
+    Default: ami-061a2d878e5754b62
+  EC2KeyPair:
+    Description: EC2 Keypair
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: aws-eu-keys
+  SubnetAZ1:
+    Description: Availability Zone for Subnet 1
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-2a
+  SubnetAZ2:
+    Description: Availability Zone for Subnet 1
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-2b
+  SubnetAZ3:
+    Description: Availability Zone for Subnet 3
+    Type: AWS::EC2::AvailabilityZone::Name	
+    Default: eu-west-2c
+Resources:
+  Roles:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/iam-root-role.yml']]
+  Buckets:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/common-s3-bucket.yml']]
+  Network:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/basic-3zone-VPC.yml']]
+      Parameters:
+        SubnetAZ1: !Ref SubnetAZ1
+        SubnetAZ2: !Ref SubnetAZ2
+        SubnetAZ3: !Ref SubnetAZ3		
+  BastionHost:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/bastion-ubuntu.yml']]
+      Parameters: 
+        BastionAMIImage: !Ref BastionAMIImage
+        EC2KeyPair: !Ref EC2KeyPair
+        BastionSubnet: !GetAtt Network.Outputs.SubnetAOut
+        SecurityGroup: !GetAtt Network.Outputs.SecurityGroupOut	
+        InstanceProfile: !GetAtt Roles.Outputs.RootInstanceProfileOut
+        CertsS3Bucket: !GetAtt Buckets.Outputs.s3BucketOut		

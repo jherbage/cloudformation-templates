@@ -94,3 +94,24 @@ Resources:
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
+Outputs:
+  SecurityGroupOut:
+    Description: Internet Group created
+    Value: !Ref SecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-SecurityGroup"
+  SubnetAOut:
+    Description: SubnetA created
+    Value: !Ref SubnetA
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetA"
+  SubnetBOut:
+    Description: SubnetB created
+    Value: !Ref SubnetB
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetB"
+  SubnetCOut:
+    Description: SubnetC created
+    Value: !Ref SubnetC
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetC"
