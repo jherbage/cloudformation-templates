@@ -5,8 +5,8 @@ Parameters:
     Description: s£ Bucket with the stack templates at top level
     Type: String
     Default: 'https://s3.eu-west-2.amazonaws.com/jherbagecftemplates'
-  BastionAMIImage:
-    Description: AMI to use for bastion host
+  AMIImage:
+    Description: AMI to use for hosts
     Type: AWS::EC2::Image::Id
     Default: ami-061a2d878e5754b62
   EC2KeyPair:
@@ -18,19 +18,61 @@ Parameters:
     Type: AWS::EC2::AvailabilityZone::Name
     Default: eu-west-2a
   SubnetAZ2:
-    Description: Availability Zone for Subnet 1
+    Description: Availability Zone for Subnet 2
     Type: AWS::EC2::AvailabilityZone::Name
     Default: eu-west-2b
   SubnetAZ3:
     Description: Availability Zone for Subnet 3
     Type: AWS::EC2::AvailabilityZone::Name	
     Default: eu-west-2c
+  VPCCIDR:
+    Description: CIDR for VPC
+    Type: String
+    Default: 172.31.0.0/16
+  SubnetCIDR1:
+    Description: CIDR Subnet 1
+    Type: String
+    Default: 172.31.0.0/20
+  SubnetCIDR2:
+    Description: CIDR Subnet 2
+    Type: String
+    Default: 172.31.16.0/20
+  SubnetCIDR3:
+    Description: CIDR Subnet 3
+    Type: String
+    Default: 172.31.32.0/20
+  MaxNumberOfWorkers:
+    Description: Max Number of Workers
+    Type: String
+    Default: '5'
+  MinNumberOfWorkers:
+    Description: Min Number of Workers
+    Type: String
+    Default: '3'
+  KubernetesServicePortRange:
+    Description: Port range for service addresses
+    Type: String
+    Default: '30000-32767'
 Resources:
   Roles:
     Type: AWS::CloudFormation::Stack
     Properties:
       TimeoutInMinutes: '60'
       TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/iam-root-role.yml']]
+  LB:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/load-balancer.yml']]
+      Parameters:
+        SecurityGroup: !GetAtt Network.Outputs.SecurityGroupOut	        
+        Subnet1: !GetAtt Network.Outputs.SubnetAOut	
+        Subnet2: !GetAtt Network.Outputs.SubnetBOut	
+        Subnet3: !GetAtt Network.Outputs.SubnetCOut	
+        InstancePort: '6443'
+        LBPort: '6443'
+        InstanceProtocol: 'TCP'
+        LBProtocol: 'TCP'
   Buckets:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -44,16 +86,162 @@ Resources:
       Parameters:
         SubnetAZ1: !Ref SubnetAZ1
         SubnetAZ2: !Ref SubnetAZ2
-        SubnetAZ3: !Ref SubnetAZ3		
+        SubnetAZ3: !Ref SubnetAZ3
+        SubnetCIDR1: !Ref SubnetCIDR1
+        SubnetCIDR2: !Ref SubnetCIDR2
+        SubnetCIDR3: !Ref SubnetCIDR3
+        VPCCIDR: !Ref VPCCIDR
   BastionHost:
     Type: AWS::CloudFormation::Stack
     Properties:
       TimeoutInMinutes: '60'
       TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/bastion-ubuntu.yml']]
       Parameters: 
-        BastionAMIImage: !Ref BastionAMIImage
+        BastionAMIImage: !Ref AMIImage
         EC2KeyPair: !Ref EC2KeyPair
         BastionSubnet: !GetAtt Network.Outputs.SubnetAOut
         SecurityGroup: !GetAtt Network.Outputs.SecurityGroupOut	
         InstanceProfile: !GetAtt Roles.Outputs.RootInstanceProfileOut
-        CertsS3Bucket: !GetAtt Buckets.Outputs.s3BucketOut		
+        CertsS3Bucket: !GetAtt Buckets.Outputs.s3BucketOut
+        LbDNSAddr: !GetAtt LB.Outputs.LbDNSOut
+        Controller1Addr: 
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR1]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR1]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR1]]
+              - '4'
+        Controller2Addr: 
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR2]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR2]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR2]]
+              - '4'
+        Controller3Addr:
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR3]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR3]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR3]]
+              - '4'
+  ControllerHost1:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: BastionHost
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/controller-ubuntu.yml']]
+      Parameters: 
+        AMIImage: !Ref AMIImage
+        EC2KeyPair: !Ref EC2KeyPair
+        Subnet: !GetAtt Network.Outputs.SubnetAOut
+        SecurityGroup: !GetAtt Network.Outputs.SecurityGroupOut	
+        InstanceProfile: !GetAtt Roles.Outputs.RootInstanceProfileOut
+        CertsS3Bucket: !GetAtt Buckets.Outputs.s3BucketOut
+        ETCDNAME1: etcd1
+        ETCDNAME2: etcd2
+        ETCDNAME3: etcd3
+        ELBName: !GetAtt LB.Outputs.LoadBalancerOut
+        LbDNSAddr: !GetAtt LB.Outputs.LbDNSOut
+        servicePortRange: !Ref KubernetesServicePortRange
+        IpAddress1: 
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR1]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR1]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR1]]
+              - '4'
+        IpAddress2: 
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR2]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR2]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR2]]
+              - '4'
+        IpAddress3:
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR3]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR3]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR3]]
+              - '4'
+  ControllerHost2:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: BastionHost
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/controller-ubuntu.yml']]
+      Parameters: 
+        AMIImage: !Ref AMIImage
+        EC2KeyPair: !Ref EC2KeyPair
+        Subnet: !GetAtt Network.Outputs.SubnetBOut
+        SecurityGroup: !GetAtt Network.Outputs.SecurityGroupOut	
+        InstanceProfile: !GetAtt Roles.Outputs.RootInstanceProfileOut
+        CertsS3Bucket: !GetAtt Buckets.Outputs.s3BucketOut
+        ETCDNAME1: etcd2
+        ETCDNAME2: etcd1
+        ETCDNAME3: etcd3
+        ELBName: !GetAtt LB.Outputs.LoadBalancerOut
+        LbDNSAddr: !GetAtt LB.Outputs.LbDNSOut
+        servicePortRange: !Ref KubernetesServicePortRange
+        IpAddress1: 
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR2]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR2]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR2]]
+              - '4'
+        IpAddress2: 
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR1]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR1]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR1]]
+              - '4'
+        IpAddress3:
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR3]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR3]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR3]]
+              - '4'
+  ControllerHost3:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: BastionHost
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/controller-ubuntu.yml']]
+      Parameters: 
+        AMIImage: !Ref AMIImage
+        EC2KeyPair: !Ref EC2KeyPair
+        Subnet: !GetAtt Network.Outputs.SubnetCOut
+        SecurityGroup: !GetAtt Network.Outputs.SecurityGroupOut	
+        InstanceProfile: !GetAtt Roles.Outputs.RootInstanceProfileOut
+        CertsS3Bucket: !GetAtt Buckets.Outputs.s3BucketOut
+        ETCDNAME1: 'etcd3'
+        ETCDNAME2: 'etcd1'
+        ETCDNAME3: 'etcd2'
+        ELBName: !GetAtt LB.Outputs.LoadBalancerOut
+        LbDNSAddr: !GetAtt LB.Outputs.LbDNSOut
+        servicePortRange: !Ref KubernetesServicePortRange
+        IpAddress1: 
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR3]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR3]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR3]]
+              - '4'
+        IpAddress2: 
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR1]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR1]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR1]]
+              - '4'
+        IpAddress3:
+          !Join
+            - '.'
+            - - !Select [0, !Split [ ".", !Ref SubnetCIDR2]]
+              - !Select [1, !Split [ ".", !Ref SubnetCIDR2]]
+              - !Select [2, !Split [ ".", !Ref SubnetCIDR2]]
+              - '4'

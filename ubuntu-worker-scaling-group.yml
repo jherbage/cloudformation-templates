@@ -1,0 +1,479 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  AMIImage:
+    Description: AMI to use for controller
+    Type: AWS::EC2::Image::Id
+    Default: ami-061a2d878e5754b62
+  EC2KeyPair:
+    Description: EC2 Keypair
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: aws-eu-keys
+  SecurityGroup:
+    Description: EC2 Security Group
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-09cc993bc0d119e3e
+  AZ1:
+    Description: AZ1
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-2a
+  AZ2:
+    Description: AZ2
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-2b
+  AZ3:
+    Description: AZ3
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-2c
+  Subnet1:
+    Description: Subnet1
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0d1cd43a832d3a354
+  Subnet2:
+    Description: Subnet2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-09f42283f3b5b0390
+  Subnet3:
+    Description: Subnet3
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0392dd0b88398efd8
+  InstanceProfile:
+    Description: IAM Profile
+    Type: String
+    Default: t1-Roles-1OGXUR8RQY14D-RootInstanceProfile-1K0VN79M6IKLO
+  InstanceRole:
+    Description: IAM Role
+    Type: String
+    Default: t1-Roles-1OGXUR8RQY14D-RootRole-HJOJDAXR8H0
+  CertsS3Bucket:
+    Description: Certs S3 Bucket
+    Type: String
+    Default: t1-buckets-1tr96ymzihr49-s3bucket-jf2908bxt9kv
+  LbName:
+    Description: Name of Load Balancer
+    Type: String
+    Default: t1-LB-1U4-MyLoadBa-BUERLNMZ2WAH
+  LbDNSAddr:
+    Description: Address of Load Balancer
+    Type: String
+    Default: t1-LB-1U4-MyLoadBa-BUERLNMZ2WAH-1828466948.eu-west-2.elb.amazonaws.com
+  MaxNumberOfWorkers:
+    Description: Max Number Of Workers
+    Type: String
+    Default: '5'
+  MinNumberOfWorkers:
+    Description: Min Number Of Workers
+    Type: String
+    Default: '1'
+Resources:
+  WorkerScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    CreationPolicy:
+      ResourceSignal:
+        Count: !Ref MinNumberOfWorkers
+        Timeout: "PT8M"
+    Properties:
+      VPCZoneIdentifier:
+      - !Ref Subnet1
+      - !Ref Subnet2
+      - !Ref Subnet3
+      MaxSize: !Ref MaxNumberOfWorkers
+      MinSize: !Ref MinNumberOfWorkers
+      AvailabilityZones: 
+      - !Ref AZ1
+      - !Ref AZ2
+      - !Ref AZ3
+      LaunchConfigurationName: !Ref WorkerLaunchConfig
+      LoadBalancerNames:
+      - !Ref LbName	  
+    Metadata:
+      AWS::CloudFormation::Init: 
+        config: 
+          groups: 
+            users: {}
+          users: 
+            user:
+              groups:
+                - 'users'
+              uid: '501'
+              homeDir: "/home/user"
+          packages:
+            apt:
+              awscli: []
+              jq: []
+              socat: []
+              conntrack: []
+              ipset: []
+          files:
+            "/usr/local/bin/cfssl":
+              source: "https://pkg.cfssl.org/R1.2/cfssl_linux-amd64"
+              group: root
+              owner: user
+              mode: "000550"
+            "/usr/local/bin/cfssljson":
+              source: "https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/crictl-v1.0.0-beta.0-linux-amd64.tar.gz":
+              source: "https://github.com/kubernetes-incubator/cri-tools/releases/download/v1.0.0-beta.0/crictl-v1.0.0-beta.0-linux-amd64.tar.gz"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/runsc":
+              source: "https://storage.googleapis.com/kubernetes-the-hard-way/runsc"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/runc.amd64":
+              source: "https://github.com/opencontainers/runc/releases/download/v1.0.0-rc5/runc.amd64"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/cni-plugins-amd64-v0.6.0.tgz":
+              source: "https://github.com/containernetworking/plugins/releases/download/v0.6.0/cni-plugins-amd64-v0.6.0.tgz"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/kubectl":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kubectl"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/containerd-1.1.0.linux-amd64.tar.gz":
+              source: "https://github.com/containerd/containerd/releases/download/v1.1.0/containerd-1.1.0.linux-amd64.tar.gz"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/kube-proxy":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kube-proxy"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/kubelet":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kubelet"
+              group: root
+              owner: user
+              mode: "000550" 
+            "/certs/ca-config.json":
+              mode: "000550"
+              group: root
+              owner: root			  
+              content:
+                Fn::Join:
+                  - "\n"
+                  -
+                    - '{'
+                    - '  "signing": {'
+                    - '    "default": {'
+                    - '      "expiry": "8760h"'
+                    - '    },'
+                    - '   "profiles": {'
+                    - '      "kubernetes": {'
+                    - '        "usages": ["signing", "key encipherment", "server auth", "client auth"],'
+                    - '        "expiry": "8760h"'
+                    - '      }'
+                    - '    }'
+                    - '  }'
+                    - '}'
+          commands:
+            1testcfssl: 
+              command: "cfssl version"
+            3copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/ca.pem . --region "
+                    - !Sub "${AWS::Region}"
+            4copyKey:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/ca-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            3copyAdminCert:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/admin.pem . --region "
+                    - !Sub "${AWS::Region}"
+            4copyAdminKey:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/admin-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            3copyProxyCert:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/kube-proxy.pem . --region "
+                    - !Sub "${AWS::Region}"
+            4copyProxyKey:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/kube-proxy-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            5generateClientCert: 
+              cwd: "/certs"
+              command:
+                !Sub |
+                  INTERNAL_IP=`curl http://169.254.169.254/latest/meta-data/local-ipv4`
+                  PUBLIC_HOST=`curl http://169.254.169.254/latest/meta-data/public-hostname`
+                  cat > $PUBLIC_HOST-csr.json << EOF
+                  {
+                    "CN": "system:node:$PUBLIC_HOST",
+                    "key": {
+                      "algo": "rsa",
+                      "size": 2048
+                    },
+                    "names": [
+                      {
+                        "C": "US",
+                        "L": "Portland",
+                        "O": "system:nodes",
+                        "OU": "Kubernetes The Hard Way",
+                        "ST": "Oregon"
+                      }
+                    ]
+                  }
+                  EOF
+                  cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -hostname=$INTERNAL_IP,$PUBLIC_HOST -profile=kubernetes $PUBLIC_HOST-csr.json | cfssljson -bare $PUBLIC_HOST                 
+            6Setup:
+              cwd: "/tmp"
+              command: 
+                !Sub |
+                  sysctl net.ipv4.conf.all.forwarding=1
+                  echo "net.ipv4.conf.all.forwarding=1" | sudo tee -a /etc/sysctl.conf
+                  mkdir -p /etc/cni/net.d /opt/cni/bin /var/lib/kubelet /var/lib/kube-proxy /var/lib/kubernetes /var/run/kubernetes
+                  chmod +x kubectl kube-proxy kubelet runc.amd64 runsc
+                  mv runc.amd64 runc
+                  mv kubectl kube-proxy kubelet runc runsc /usr/local/bin/
+                  tar -xvf crictl-v1.0.0-beta.0-linux-amd64.tar.gz -C /usr/local/bin/
+                  tar -xvf cni-plugins-amd64-v0.6.0.tgz -C /opt/cni/bin/
+                  tar -xvf containerd-1.1.0.linux-amd64.tar.gz -C /
+            7installContainerd: 
+              cwd: "/certs"
+              command:
+                !Sub |
+                  mkdir -p /etc/containerd/
+                  cat << EOF | sudo tee /etc/containerd/config.toml
+                  [plugins]
+                    [plugins.cri.containerd]
+                      snapshotter = "overlayfs"
+                      [plugins.cri.containerd.default_runtime]
+                        runtime_type = "io.containerd.runtime.v1.linux"
+                        runtime_engine = "/usr/local/bin/runc"
+                        runtime_root = ""
+                      [plugins.cri.containerd.untrusted_workload_runtime]
+                        runtime_type = "io.containerd.runtime.v1.linux"
+                        runtime_engine = "/usr/local/bin/runsc"
+                        runtime_root = "/run/containerd/runsc"
+                  EOF
+                  cat << EOF | sudo tee /etc/systemd/system/containerd.service
+                  [Unit]
+                  Description=containerd container runtime
+                  Documentation=https://containerd.io
+                  After=network.target
+                  
+                  [Service]
+                  ExecStartPre=/sbin/modprobe overlay
+                  ExecStart=/bin/containerd
+                  Restart=always
+                  RestartSec=5
+                  Delegate=yes
+                  KillMode=process
+                  OOMScoreAdjust=-999
+                  LimitNOFILE=1048576
+                  LimitNPROC=infinity
+                  LimitCORE=infinity
+                  
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+            8generateKubeletConfig:
+              cwd: "/certs"
+              command: 
+                !Sub |
+                  PUBLIC_HOST=`curl http://169.254.169.254/latest/meta-data/public-hostname`
+                  kubectl config set-cluster kubernetes-the-hard-way --certificate-authority=ca.pem  --embed-certs=true --server=https://${LbDNSAddr}:6443 --kubeconfig=$PUBLIC_HOST.kubeconfig
+                  kubectl config set-credentials system:node:$PUBLIC_HOST --client-certificate=$PUBLIC_HOST.pem --client-key=$PUBLIC_HOST-key.pem --embed-certs=true --kubeconfig=$PUBLIC_HOST.kubeconfig
+                  kubectl config set-context default --cluster=kubernetes-the-hard-way --user=system:node:$PUBLIC_HOST --kubeconfig=$PUBLIC_HOST.kubeconfig
+                  kubectl config use-context default --kubeconfig=$PUBLIC_HOST.kubeconfig
+            8generateKubeProxyConfig:
+              cwd: "/certs"
+              command: 
+                !Sub |
+                  kubectl config set-cluster kubernetes-the-hard-way --certificate-authority=ca.pem  --embed-certs=true --server=https://${LbDNSAddr}:6443 --kubeconfig=kube-proxy.kubeconfig
+                  kubectl config set-credentials system:kube-proxy --client-certificate=kube-proxy.pem --client-key=kube-proxy-key.pem --embed-certs=true --kubeconfig=kube-proxy.kubeconfig
+                  kubectl config set-context default --cluster=kubernetes-the-hard-way --user=system:kube-proxy --kubeconfig=kube-proxy.kubeconfig
+                  kubectl config use-context default --kubeconfig=kube-proxy.kubeconfig
+            9configureKubelet: 
+              cwd: "/certs"
+              command:
+                !Sub |
+                  PUBLIC_HOST=`curl http://169.254.169.254/latest/meta-data/public-hostname`
+                  mv $PUBLIC_HOST-key.pem $PUBLIC_HOST.pem /var/lib/kubelet/
+                  mv $PUBLIC_HOST.kubeconfig /var/lib/kubelet/kubeconfig
+                  cp -p ca.pem /var/lib/kubernetes/
+                  cat << EOF | sudo tee /var/lib/kubelet/kubelet-config.yaml
+                  kind: KubeletConfiguration
+                  apiVersion: kubelet.config.k8s.io/v1beta1
+                  authentication:
+                    anonymous:
+                      enabled: false
+                    webhook:
+                      enabled: true
+                    x509:
+                      clientCAFile: "/var/lib/kubernetes/ca.pem"
+                  authorization:
+                    mode: Webhook
+                  clusterDomain: "cluster.local"
+                  clusterDNS: 
+                    - "10.32.0.10"
+                  runtimeRequestTimeout: "15m"
+                  tlsCertFile: "/var/lib/kubelet/$PUBLIC_HOST.pem"
+                  tlsPrivateKeyFile: "/var/lib/kubelet/$PUBLIC_HOST-key.pem"
+                  EOF
+                  cat << EOF | sudo tee /etc/systemd/system/kubelet.service
+                  [Unit]
+                  Description=Kubernetes Kubelet
+                  Documentation=https://github.com/kubernetes/kubernetes
+                  After=containerd.service
+                  Requires=containerd.service
+                  
+                  [Service]
+                  ExecStart=/usr/local/bin/kubelet \\
+                    --config=/var/lib/kubelet/kubelet-config.yaml \\
+                    --container-runtime=remote \\
+                    --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock \\
+                    --image-pull-progress-deadline=2m \\
+                    --kubeconfig=/var/lib/kubelet/kubeconfig \\
+                    --network-plugin=cni \\
+                    --register-node=true \\
+                    --v=2 \\
+                    --hostname-override=$PUBLIC_HOST \\
+                    --allow-privileged=true
+                  Restart=on-failure
+                  RestartSec=5
+                  
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+            aconfigureKubeProxy: 
+              cwd: "/certs"
+              command:
+                !Sub |
+                  mv kube-proxy.kubeconfig /var/lib/kube-proxy/kubeconfig
+                  cat << EOF | sudo tee /var/lib/kube-proxy/kube-proxy-config.yaml
+                  kind: KubeProxyConfiguration
+                  apiVersion: kubeproxy.config.k8s.io/v1alpha1
+                  clientConnection:
+                    kubeconfig: "/var/lib/kube-proxy/kubeconfig"
+                  mode: "iptables"
+                  clusterCIDR: "10.200.0.0/16"
+                  EOF
+                  cat << EOF | sudo tee /etc/systemd/system/kube-proxy.service
+                  [Unit]
+                  Description=Kubernetes Kube Proxy
+                  Documentation=https://github.com/kubernetes/kubernetes
+                  
+                  [Service]
+                  ExecStart=/usr/local/bin/kube-proxy \\
+                    --config=/var/lib/kube-proxy/kube-proxy-config.yaml
+                  Restart=on-failure
+                  RestartSec=5
+                  
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+                  systemctl daemon-reload
+                  systemctl enable containerd kubelet kube-proxy
+                  systemctl start containerd kubelet kube-proxy
+            bconfigureKubectl:
+              cwd: "/certs"
+              command:
+                !Sub |
+                  sleep 20
+                  kubectl config set-cluster kubernetes-the-hard-way --certificate-authority=ca.pem --embed-certs=true --server=https://${LbDNSAddr}:6443
+                  kubectl config set-credentials admin --client-certificate=/certs/admin.pem --client-key=/certs/admin-key.pem
+                  kubectl config set-context kubernetes-the-hard-way --cluster=kubernetes-the-hard-way --user=admin
+                  kubectl config use-context kubernetes-the-hard-way
+                  kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=`kubectl version | base64 | tr -d '\n'`&env.IPALLOC_RANGE=10.200.0.0/16"
+            cinstallWeaveNet:
+              cwd: "/certs"
+              command:
+                !Sub |
+                  sleep 20
+                  kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=`kubectl version | base64 | tr -d '\n'`&env.IPALLOC_RANGE=10.200.0.0/16"
+              test:
+                !Sub |
+                  count=`kubectl get pods -n kube-system| grep -c AGE`
+                  if [ $count > 0 ]; then
+                    exit 1
+                  else
+                    exit 0
+                  fi				  
+  WorkerLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !Ref AMIImage
+      IamInstanceProfile: !Ref InstanceProfile
+      InstanceType: t2.micro
+      InstanceMonitoring: false
+      KeyName: !Ref EC2KeyPair
+      AssociatePublicIpAddress: true
+      SecurityGroups:
+      - !Ref SecurityGroup
+      UserData: 
+        Fn::Base64:
+          Fn::Join:
+            - ""
+            -
+              - "#!/bin/bash -v\n"
+              - "# Install AWS cfn tools for ubuntu\n"
+              - "apt-get update\n"
+              - "apt-get -y install python-setuptools\n"
+              - "mkdir aws-cfn-bootstrap-latest\n"
+              - "curl https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz | tar xz -C aws-cfn-bootstrap-latest --strip-components 1\n"
+              - "easy_install aws-cfn-bootstrap-latest\n"
+              - "# Function to return error code to the wait handle\n"
+              - "function handle_error\n"
+              - "{\n"
+              - !Sub " /usr/local/bin/cfn-signal -e 1 -s false --stack ${AWS::StackName} -r 'Failed to run cfn-init' --resource WorkerScalingGroup --region ${AWS::Region}\n"
+              - " exit 1\n"
+              - "}\n"
+              - !Sub "/usr/local/bin/cfn-init -s ${AWS::StackName} -r WorkerScalingGroup --region ${AWS::Region} || handle_error 'Failed to run cfn-init'\n"
+              - "# Return success\n"
+              - !Sub "/usr/local/bin/cfn-signal -e 0 -s true --stack ${AWS::StackName} -r 'Stack complete' --resource WorkerScalingGroup --region ${AWS::Region}\n"
+Outputs:
+  WorkerGroupOut:
+    Description: WorkerScalingGroup created
+    Value: !Ref WorkerScalingGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-WorkerScalingGroup"

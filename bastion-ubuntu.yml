@@ -21,6 +21,18 @@ Parameters:
   CertsS3Bucket:
     Description: Certs S3 Bucket
     Type: String
+  LbDNSAddr:
+    Description: Address for the Load Balancer
+    Type: String
+  Controller1Addr:
+    Description: Private IP Address for controller1
+    Type: String
+  Controller2Addr:
+    Description: Private IP Address for controller2
+    Type: String
+  Controller3Addr:
+    Description: Private IP Address for controller3
+    Type: String
 Resources:
   BastionHost:
     Type: AWS::EC2::Instance
@@ -135,6 +147,174 @@ Resources:
                     - '    }'
                     - '  ]'
                     - '}'
+            "/certs/admin-csr.json":
+              mode: "000755"
+              group: root
+              owner: root			  
+              content:
+                Fn::Join:
+                  - "\n"
+                  -
+                    - '{'
+                    - '"CN": "admin",'
+                    - '  "key": {'
+                    - '    "algo": "rsa",'
+                    - '    "size": 2048'
+                    - '  },'
+                    - '  "names": ['
+                    - '    {'
+                    - '      "C": "US",'
+                    - '      "L": "Portland",'
+                    - '      "O": "system:masters",'
+                    - '      "OU": "Kubernetes The Hard Way",'
+                    - '      "ST": "Oregon"'
+                    - '    }'
+                    - '  ]'
+                    - '}'
+            "/certs/kube-controller-manager-csr.json":
+              mode: "000755"
+              group: root
+              owner: root			  
+              content:
+                Fn::Join:
+                  - "\n"
+                  -
+                    - '{'
+                    - '"CN": "system:kube-controller-manager",'
+                    - '  "key": {'
+                    - '    "algo": "rsa",'
+                    - '    "size": 2048'
+                    - '  },'
+                    - '  "names": ['
+                    - '    {'
+                    - '      "C": "US",'
+                    - '      "L": "Portland",'
+                    - '      "O": "system:kube-controller-manager",'
+                    - '      "OU": "Kubernetes The Hard Way",'
+                    - '      "ST": "Oregon"'
+                    - '    }'
+                    - '  ]'
+                    - '}'
+            "/certs/kube-controller-manager-csr.json":
+              mode: "000755"
+              group: root
+              owner: root			  
+              content:
+                Fn::Join:
+                  - "\n"
+                  -
+                    - '{'
+                    - '"CN": "system:kube-controller-manager",'
+                    - '  "key": {'
+                    - '    "algo": "rsa",'
+                    - '    "size": 2048'
+                    - '  },'
+                    - '  "names": ['
+                    - '    {'
+                    - '      "C": "US",'
+                    - '      "L": "Portland",'
+                    - '      "O": "system:kube-controller-manager",'
+                    - '      "OU": "Kubernetes The Hard Way",'
+                    - '      "ST": "Oregon"'
+                    - '    }'
+                    - '  ]'
+                    - '}'
+            "/certs/kube-proxy-csr.json":
+              mode: "000755"
+              group: root
+              owner: root			  
+              content:
+                Fn::Join:
+                  - "\n"
+                  -
+                    - '{'
+                    - '"CN": "system:kube-proxy",'
+                    - '  "key": {'
+                    - '    "algo": "rsa",'
+                    - '    "size": 2048'
+                    - '  },'
+                    - '  "names": ['
+                    - '    {'
+                    - '      "C": "US",'
+                    - '      "L": "Portland",'
+                    - '      "O": "system:node-proxier",'
+                    - '      "OU": "Kubernetes The Hard Way",'
+                    - '      "ST": "Oregon"'
+                    - '    }'
+                    - '  ]'
+                    - '}'
+            "/certs/kube-scheduler-csr.json":
+              mode: "000755"
+              group: root
+              owner: root			  
+              content:
+                Fn::Join:
+                  - "\n"
+                  -
+                    - '{'
+                    - '"CN": "system:kube-scheduler",'
+                    - '  "key": {'
+                    - '    "algo": "rsa",'
+                    - '    "size": 2048'
+                    - '  },'
+                    - '  "names": ['
+                    - '    {'
+                    - '      "C": "US",'
+                    - '      "L": "Portland",'
+                    - '      "O": "system:kube-scheduler",'
+                    - '      "OU": "Kubernetes The Hard Way",'
+                    - '      "ST": "Oregon"'
+                    - '    }'
+                    - '  ]'
+                    - '}'
+            "/certs/service-account-csr.json":
+              mode: "000755"
+              group: root
+              owner: root			  
+              content:
+                Fn::Join:
+                  - "\n"
+                  -
+                    - '{'
+                    - '"CN": "service-accounts",'
+                    - '  "key": {'
+                    - '    "algo": "rsa",'
+                    - '    "size": 2048'
+                    - '  },'
+                    - '  "names": ['
+                    - '    {'
+                    - '      "C": "US",'
+                    - '      "L": "Portland",'
+                    - '      "O": "Kubernetes",'
+                    - '      "OU": "Kubernetes The Hard Way",'
+                    - '      "ST": "Oregon"'
+                    - '    }'
+                    - '  ]'
+                    - '}'
+            "/certs/kubernetes-csr.json":
+              mode: "000755"
+              group: root
+              owner: root			  
+              content:
+                Fn::Join:
+                  - "\n"
+                  -
+                    - '{'
+                    - '"CN": "kubernetes",'
+                    - '  "key": {'
+                    - '    "algo": "rsa",'
+                    - '    "size": 2048'
+                    - '  },'
+                    - '  "names": ['
+                    - '    {'
+                    - '      "C": "US",'
+                    - '      "L": "Portland",'
+                    - '      "O": "Kubernetes",'
+                    - '      "OU": "Kubernetes The Hard Way",'
+                    - '      "ST": "Oregon"'
+                    - '    }'
+                    - '  ]'
+                    - '}'
           commands:
             1testcfssl: 
               command: "cfssl version"
@@ -153,16 +333,155 @@ Resources:
                     - "else\n"
                     - "  exit 1\n"
                     - "fi\n"
-            4copyCerts:
+            4generateAdminCert: 
+              cwd: "/certs"
+              command: 'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=kubernetes admin-csr.json | cfssljson -bare admin'
+              test: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "#!/bin/bash -v\n"
+                    - "if [ ! -e 'admin-key.pem' ]; then\n"
+                    - "  exit 0\n"
+                    - "else\n"
+                    - "  exit 1\n"
+                    - "fi\n"
+            5generateControllerCert: 
+              cwd: "/certs"
+              command: 'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=kubernetes kube-controller-manager-csr.json | cfssljson -bare kube-controller-manager'
+              test: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "#!/bin/bash -v\n"
+                    - "if [ ! -e 'kube-controller-manager-key.pem' ]; then\n"
+                    - "  exit 0\n"
+                    - "else\n"
+                    - "  exit 1\n"
+                    - "fi\n"
+            6generateProxyCert: 
+              cwd: "/certs"
+              command: 'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=kubernetes kube-proxy-csr.json | cfssljson -bare kube-proxy'
+              test: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "#!/bin/bash -v\n"
+                    - "if [ ! -e 'kube-proxy-key.pem' ]; then\n"
+                    - "  exit 0\n"
+                    - "else\n"
+                    - "  exit 1\n"
+                    - "fi\n"
+            7generateSchedulerCert: 
+              cwd: "/certs"
+              command: 'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=kubernetes kube-scheduler-csr.json | cfssljson -bare kube-scheduler'
+              test: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "#!/bin/bash -v\n"
+                    - "if [ ! -e 'kube-scheduler-key.pem' ]; then\n"
+                    - "  exit 0\n"
+                    - "else\n"
+                    - "  exit 1\n"
+                    - "fi\n"
+            8generateServiceAccountCert: 
+              cwd: "/certs"
+              command: 'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=kubernetes service-account-csr.json | cfssljson -bare service-account'
+              test: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "#!/bin/bash -v\n"
+                    - "if [ ! -e 'service-account-key.pem' ]; then\n"
+                    - "  exit 0\n"
+                    - "else\n"
+                    - "  exit 1\n"
+                    - "fi\n"
+            9generateKubeAPICert: 
               cwd: "/certs"
               command: 
                 Fn::Join:
                   - ""
                   -
-                    - "aws s3 cp ca-key.pem s3://"
+                    - 'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -hostname=10.32.0.1,localhost,kubernetes.default,127.0.0.1,'
+                    - !Ref LbDNSAddr
+                    - ','
+                    - !Ref Controller1Addr
+                    - ','
+                    - !Ref Controller2Addr
+                    - ','
+                    - !Ref Controller3Addr
+                    - ' -profile=kubernetes kubernetes-csr.json | cfssljson -bare kubernetes'
+              test: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "#!/bin/bash -v\n"
+                    - "if [ ! -e 'kubernetes-key.pem' ]; then\n"
+                    - "  exit 0\n"
+                    - "else\n"
+                    - "  exit 1\n"
+                    - "fi\n"
+            agenerateEncryptionKey: 
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - "\n"
+                  -
+                    - "ENCRYPTION_KEY=$(head -c 32 /dev/urandom | base64)"
+                    - "cat > encryption-config.yaml << EOF"
+                    - "kind: EncryptionConfig"
+                    - "apiVersion: v1"
+                    - "resources:"
+                    - "  - resources:"
+                    - "      - secrets"
+                    - "    providers:"
+                    - "      - aescbc:"
+                    - "          keys:"
+                    - "            - name: key1"
+                    - "              secret: ${ENCRYPTION_KEY}"
+                    - "      - identity: {}"
+                    - "EOF"
+              test: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "#!/bin/bash -v\n"
+                    - "if [ ! -e 'encryption-config.yaml' ]; then\n"
+                    - "  exit 0\n"
+                    - "else\n"
+                    - "  exit 1\n"
+                    - "fi\n"
+            bmakeKubectlClient: 
+              cwd: "/certs"
+              command: 
+                !Sub |
+                  kubectl config set-cluster kubernetes-the-hard-way --certificate-authority=ca.pem --embed-certs=true --server=https://${LbDNSAddr}:6443
+                  kubectl config set-credentials admin --client-certificate=/certs/admin.pem --client-key=/certs/admin-key.pem
+                  kubectl config set-context kubernetes-the-hard-way --cluster=kubernetes-the-hard-way --user=admin
+                  kubectl config use-context kubernetes-the-hard-way
+            zcopyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp . s3://"
                     - !Ref CertsS3Bucket
                     - " --region "
-                    - !Sub "${AWS::Region}"
+                    - !Sub "${AWS::Region} --recursive --exclude='*' --include='*.pem'"
+            zcopyEncryptKey:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp . s3://"
+                    - !Ref CertsS3Bucket
+                    - " --region "
+                    - !Sub "${AWS::Region} --recursive --exclude='*' --include='encryption-config.yaml'"
+
 Outputs:
   BastionHostOut:
     Description: BastionHost created

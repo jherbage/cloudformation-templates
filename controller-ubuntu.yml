@@ -1,0 +1,643 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  AMIImage:
+    Description: AMI to use for host
+    Type: AWS::EC2::Image::Id
+    Default: ami-061a2d878e5754b62
+  EC2KeyPair:
+    Description: EC2 Keypair
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: aws-eu-keys
+  SecurityGroup:
+    Description: EC2 Security Group
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-05734a6fde74909ee
+  Subnet:
+    Description: Subnet
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0e2ca3a4b06b81a51
+  InstanceProfile:
+    Description: IAM Profile
+    Type: String
+    Default: t1-Roles-19VO1AQUM2I94-RootInstanceProfile-1GXOC8SERA26E
+  CertsS3Bucket:
+    Description: Certs S3 Bucket
+    Type: String
+    Default: t1-buckets-yyvoq0v0is89-s3bucket-1nxu2rru189du
+  IpAddress1:
+    Description: Private IP address of this node
+    Type: String
+    Default: '172.31.0.4'
+  IpAddress2:
+    Description: Private IP address of other node in cluster
+    Type: String
+    Default: '172.31.16.4'
+  IpAddress3:
+    Description: Private IP address of other node in cluster
+    Type: String
+    Default: '172.31.32.4'
+  ETCDNAME1:
+    Description: Private IP address of this node
+    Type: String
+    Default: 'etcd1'
+  ETCDNAME2:
+    Description: Private IP address of other node in cluster
+    Type: String
+    Default: 'etcd2'
+  ETCDNAME3:
+    Description: Private IP address of other node in cluster
+    Type: String
+    Default: 'etcd3'
+  ELBName:
+    Description: Name of the ELB to pop the instance in
+    Type: String
+    Default: t1-LB-1FX-MyLoadBa-1URA8YQ2ALGQM
+  servicePortRange:
+    Description: Kubernetes service port range
+    Type: String
+    Default: '30000-32767'
+  LbDNSAddr:
+    Description: Address for the Load Balancer
+    Type: String
+Resources:
+  RecoveryTestAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Trigger a recovery when instance status check fails for 5 consecutive minutes.
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed_System
+      Statistic: Minimum
+      Period: '60'
+      EvaluationPeriods: '5'
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: '0'
+      AlarmActions: [ !Sub "arn:aws:automate:${AWS::Region}:ec2:recover" ]
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref ControllerHost
+  ControllerHost:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AMIImage
+      IamInstanceProfile: !Ref InstanceProfile
+      InstanceType: t2.micro
+      KeyName: !Ref EC2KeyPair
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: 
+            VolumeSize: 20
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: '0'
+          PrivateIpAddress: !Ref IpAddress1
+          DeleteOnTermination: 'true'
+          GroupSet: 
+            - !Ref SecurityGroup
+          SubnetId: !Ref Subnet
+      UserData: 
+        Fn::Base64:
+          Fn::Join:
+            - ""
+            -
+              - "#!/bin/bash -v\n"
+              - "# Install AWS cfn tools for ubuntu\n"
+              - "apt-get update\n"
+              - "apt-get -y install python-setuptools\n"
+              - "mkdir aws-cfn-bootstrap-latest\n"
+              - "curl https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz | tar xz -C aws-cfn-bootstrap-latest --strip-components 1\n"
+              - "easy_install aws-cfn-bootstrap-latest\n"
+              - "# Function to return error code to the wait handle\n"
+              - "function handle_error\n"
+              - "{\n"
+              - !Sub " /usr/local/bin/cfn-signal -e 1 --stack ${AWS::StackName} -r 'Failed to run cfn-init' --resource ControllerHost --region ${AWS::Region}\n"
+              - " exit 1\n"
+              - "}\n"
+              - !Sub "/usr/local/bin/cfn-init -s ${AWS::StackName} -r ControllerHost --region ${AWS::Region} || handle_error 'Failed to run cfn-init'\n"
+              - "# Return success\n"
+              - !Sub "/usr/local/bin/cfn-signal -e 0 --stack ${AWS::StackName} -r 'Stack complete' --resource ControllerHost --region ${AWS::Region}\n"
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: "PT10M"
+    Metadata:
+      AWS::CloudFormation::Init: 
+        config: 
+          groups: 
+            users: {}
+          users: 
+            user:
+              groups:
+                - 'users'
+              uid: '501'
+              homeDir: "/home/user"
+          packages:
+            apt:
+              awscli: []
+              jq: []
+              nginx: []
+          files: 
+            "/usr/local/bin/cfssl":
+              source: "https://pkg.cfssl.org/R1.2/cfssl_linux-amd64"
+              group: root
+              owner: user
+              mode: "000550"
+            "/usr/local/bin/cfssljson":
+              source: "https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64"
+              group: root
+              owner: user
+              mode: "000550"
+            "/usr/local/bin/kubectl":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kubectl"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/etcd-v3.3.5-linux-amd64.tar.gz":
+              source: "https://github.com/coreos/etcd/releases/download/v3.3.5/etcd-v3.3.5-linux-amd64.tar.gz"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/kube-apiserver":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kube-apiserver"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/kube-controller-manager":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kube-controller-manager"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/kube-scheduler":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kube-scheduler"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/kubectl":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kubectl"
+              group: root
+              owner: user
+              mode: "000550"
+            "/certs/ca-config.json":
+              mode: "000550"
+              group: root
+              owner: root			  
+              content:
+                Fn::Join:
+                  - "\n"
+                  -
+                    - '{'
+                    - '  "signing": {'
+                    - '    "default": {'
+                    - '      "expiry": "8760h"'
+                    - '    },'
+                    - '   "profiles": {'
+                    - '      "kubernetes": {'
+                    - '        "usages": ["signing", "key encipherment", "server auth", "client auth"],'
+                    - '        "expiry": "8760h"'
+                    - '      }'
+                    - '    }'
+                    - '  }'
+                    - '}'
+          commands:
+            1testcfssl: 
+              command: "cfssl version"
+            2testkubectl: 
+              command: "kubectl version --client"
+            3copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/ca.pem . --region "
+                    - !Sub "${AWS::Region}"
+            4copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/ca-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            5copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/kubernetes-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            6copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/kubernetes.pem . --region "
+                    - !Sub "${AWS::Region}"
+            7copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/service-account.pem . --region "
+                    - !Sub "${AWS::Region}"
+            8copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/service-account-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            9copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/admin.pem . --region "
+                    - !Sub "${AWS::Region}"
+            acopyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/admin-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            9copyControllerCert:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/kube-controller-manager.pem . --region "
+                    - !Sub "${AWS::Region}"
+            9copyControllerKey:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/kube-controller-manager-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            9copySchedulerCert:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/kube-scheduler.pem . --region "
+                    - !Sub "${AWS::Region}"
+            9copySchedulerKey:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/kube-scheduler-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            amakeKubectlClient: 
+              cwd: "/certs"
+              command: 
+                !Sub |
+                  kubectl config set-cluster kubernetes-the-hard-way --certificate-authority=ca.pem --embed-certs=true --server=https://${LbDNSAddr}:6443
+                  kubectl config set-credentials admin --client-certificate=/certs/admin.pem --client-key=/certs/admin-key.pem
+                  kubectl config set-context kubernetes-the-hard-way --cluster=kubernetes-the-hard-way --user=admin
+                  kubectl config use-context kubernetes-the-hard-way				
+            bgenerateControllerKubeConfig:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - 'kubectl config set-cluster kubernetes-the-hard-way '
+                    - ' --certificate-authority=ca.pem'
+                    - ' --embed-certs=true'
+                    - ' --server=https://127.0.0.1:6443'
+                    - " --kubeconfig=kube-controller-manager.kubeconfig\n"
+                    - 'kubectl config set-credentials system:kube-controller-manager '
+                    - ' --client-certificate=kube-controller-manager.pem'
+                    - ' --client-key=kube-controller-manager-key.pem'
+                    - ' --embed-certs=true'
+                    - " --kubeconfig=kube-controller-manager.kubeconfig\n"
+                    - 'kubectl config set-context default '
+                    - ' --cluster=kubernetes-the-hard-way'
+                    - ' --user=system:kube-controller-manager'
+                    - " --kubeconfig=kube-controller-manager.kubeconfig\n"
+                    - "kubectl config use-context default --kubeconfig=kube-controller-manager.kubeconfig\n"
+            cgenerateSchedulerKubeConfig:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - 'kubectl config set-cluster kubernetes-the-hard-way '
+                    - ' --certificate-authority=ca.pem'
+                    - ' --embed-certs=true'
+                    - ' --server=https://127.0.0.1:6443'
+                    - " --kubeconfig=kube-scheduler.kubeconfig\n"
+                    - 'kubectl config set-credentials system:kube-scheduler '
+                    - ' --client-certificate=kube-scheduler.pem'
+                    - ' --client-key=kube-scheduler-key.pem'
+                    - ' --embed-certs=true'
+                    - " --kubeconfig=kube-scheduler.kubeconfig\n"
+                    - 'kubectl config set-context default '
+                    - ' --cluster=kubernetes-the-hard-way'
+                    - ' --user=system:kube-scheduler'
+                    - " --kubeconfig=kube-scheduler.kubeconfig\n"
+                    - "kubectl config use-context default --kubeconfig=kube-scheduler.kubeconfig\n"
+            dgenerateAdminKubeConfig:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - 'kubectl config set-cluster kubernetes-the-hard-way '
+                    - ' --certificate-authority=ca.pem'
+                    - ' --embed-certs=true'
+                    - ' --server=https://127.0.0.1:6443'
+                    - " --kubeconfig=admin.kubeconfig\n"
+                    - 'kubectl config set-credentials admin '
+                    - ' --client-certificate=admin.pem'
+                    - ' --client-key=admin-key.pem'
+                    - ' --embed-certs=true'
+                    - " --kubeconfig=admin.kubeconfig\n"
+                    - 'kubectl config set-context default '
+                    - ' --cluster=kubernetes-the-hard-way'
+                    - ' --user=admin'
+                    - " --kubeconfig=admin.kubeconfig\n"
+                    - "kubectl config use-context default --kubeconfig=admin.kubeconfig\n"
+            ecopyEncryptionKey:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/encryption-config.yaml . --region "
+                    - !Sub "${AWS::Region}"
+            fInstallEtcd:
+              cwd: "/tmp"
+              command: 
+                !Sub |
+                  tar -xvf etcd-v3.3.5-linux-amd64.tar.gz
+                  mv etcd-v3.3.5-linux-amd64/etcd* /usr/local/bin
+                  mkdir -p /etc/etcd /var/lib/etcd
+                  cp /certs/ca.pem /certs/kubernetes-key.pem /certs/kubernetes.pem /etc/etcd/
+                  INTERNAL_IP=`curl http://169.254.169.254/latest/meta-data/local-ipv4`
+                  INSTANCE_ID=`curl http://169.254.169.254/latest/meta-data/instance-id`
+                  ETCD_NAME=`curl http://169.254.169.254/latest/meta-data/public-hostname`
+                  INITIAL_CLUSTER="${ETCDNAME1}=https://${IpAddress1}:2380,${ETCDNAME2}=https://${IpAddress2}:2380,${ETCDNAME3}=https://${IpAddress3}:2380"
+                  INITIAL_CLUSTER_OPTIONS=" --initial-cluster-token etcd-cluster-0 --initial-cluster $INITIAL_CLUSTER --initial-cluster-state new"
+                  cat << EOF | sudo tee /etc/systemd/system/etcd.service
+                  [Unit]
+                  Description=etcd
+                  Documentation=https://github.com/coreos
+                  
+                  [Service]
+                  ExecStart=/usr/local/bin/etcd \
+                    --name ${ETCDNAME1} \
+                    --cert-file=/etc/etcd/kubernetes.pem \
+                    --key-file=/etc/etcd/kubernetes-key.pem \
+                    --peer-cert-file=/etc/etcd/kubernetes.pem \
+                    --peer-key-file=/etc/etcd/kubernetes-key.pem \
+                    --trusted-ca-file=/etc/etcd/ca.pem \
+                    --peer-trusted-ca-file=/etc/etcd/ca.pem \
+                    --peer-client-cert-auth \
+                    --client-cert-auth \
+                    --initial-advertise-peer-urls https://$INTERNAL_IP:2380 \
+                    --listen-peer-urls https://$INTERNAL_IP:2380 \
+                    --listen-client-urls https://$INTERNAL_IP:2379,https://127.0.0.1:2379 \
+                    --advertise-client-urls https://$INTERNAL_IP:2379 \
+                    $INITIAL_CLUSTER_OPTIONS \
+                    --data-dir=/var/lib/etcd
+                  Restart=on-failure
+                  RestartSec=5
+                  
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+                  systemctl daemon-reload
+                  systemctl enable etcd
+                  systemctl start etcd
+            gInstallKubernetesController:
+              cwd: "/certs"
+              command: 
+                !Sub |
+                  mkdir -p /etc/kubernetes/config
+                  chmod +x kube-apiserver kube-controller-manager kube-scheduler kubectl
+                  mv /tmp/kube-apiserver /tmp/kube-controller-manager /tmp/kube-scheduler /tmp/kubectl /usr/local/bin/
+                  mkdir -p /var/lib/kubernetes/
+                  cp ca.pem ca-key.pem kubernetes-key.pem kubernetes.pem service-account-key.pem service-account.pem encryption-config.yaml /var/lib/kubernetes/
+                  INTERNAL_IP=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
+                  cat << EOF | sudo tee /etc/systemd/system/kube-apiserver.service
+                  [Unit]
+                  Description=Kubernetes API Server
+                  Documentation=https://github.com/kubernetes/kubernetes
+                  
+                  [Service]
+                  ExecStart=/usr/local/bin/kube-apiserver \
+                    --advertise-address=$INTERNAL_IP \
+                    --allow-privileged=true \
+                    --apiserver-count=3 \
+                    --audit-log-maxage=30 \
+                    --audit-log-maxbackup=3 \
+                    --audit-log-maxsize=100 \
+                    --audit-log-path=/var/log/audit.log \
+                    --authorization-mode=Node,RBAC \
+                    --bind-address=0.0.0.0 \
+                    --client-ca-file=/var/lib/kubernetes/ca.pem \
+                    --enable-admission-plugins=Initializers,NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota \
+                    --enable-swagger-ui=true \
+                    --etcd-cafile=/var/lib/kubernetes/ca.pem \
+                    --etcd-certfile=/var/lib/kubernetes/kubernetes.pem \
+                    --etcd-keyfile=/var/lib/kubernetes/kubernetes-key.pem \
+                    --etcd-servers=https://${IpAddress1}:2379,https://${IpAddress2}:2379,https://${IpAddress3}:2379 \
+                    --event-ttl=1h \
+                    --experimental-encryption-provider-config=/var/lib/kubernetes/encryption-config.yaml \
+                    --kubelet-certificate-authority=/var/lib/kubernetes/ca.pem \
+                    --kubelet-client-certificate=/var/lib/kubernetes/kubernetes.pem \
+                    --kubelet-client-key=/var/lib/kubernetes/kubernetes-key.pem \
+                    --kubelet-https=true \
+                    --runtime-config=api/all \
+                    --service-account-key-file=/var/lib/kubernetes/service-account.pem \
+                    --service-cluster-ip-range=10.32.0.0/24 \
+                    --service-node-port-range=${servicePortRange} \
+                   --tls-cert-file=/var/lib/kubernetes/kubernetes.pem \
+                    --tls-private-key-file=/var/lib/kubernetes/kubernetes-key.pem \
+                    --v=2 \
+                    --kubelet-preferred-address-types=InternalIP,InternalDNS,Hostname,ExternalIP,ExternalDNS
+                  Restart=on-failure
+                  RestartSec=5
+                  
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+                  cp kube-controller-manager.kubeconfig /var/lib/kubernetes/
+                  cat << EOF | sudo tee /etc/systemd/system/kube-controller-manager.service
+                  [Unit]
+                  Description=Kubernetes Controller Manager
+                  Documentation=https://github.com/kubernetes/kubernetes
+                  
+                  [Service]
+                  ExecStart=/usr/local/bin/kube-controller-manager \
+                    --address=0.0.0.0 \
+                    --cluster-cidr=10.200.0.0/16 \
+                    --cluster-name=kubernetes \
+                    --cluster-signing-cert-file=/var/lib/kubernetes/ca.pem \
+                    --cluster-signing-key-file=/var/lib/kubernetes/ca-key.pem \
+                    --kubeconfig=/var/lib/kubernetes/kube-controller-manager.kubeconfig \
+                    --leader-elect=true \
+                    --root-ca-file=/var/lib/kubernetes/ca.pem \
+                    --service-account-private-key-file=/var/lib/kubernetes/service-account-key.pem \
+                    --service-cluster-ip-range=10.32.0.0/24 \
+                    --use-service-account-credentials=true \
+                    --v=2
+                  Restart=on-failure
+                  RestartSec=5
+                  
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+                  cp kube-scheduler.kubeconfig /var/lib/kubernetes/
+                  cat << EOF | sudo tee /etc/kubernetes/config/kube-scheduler.yaml
+                  apiVersion: componentconfig/v1alpha1
+                  kind: KubeSchedulerConfiguration
+                  clientConnection:
+                    kubeconfig: "/var/lib/kubernetes/kube-scheduler.kubeconfig"
+                  leaderElection:
+                    leaderElect: true
+                  EOF
+                  cat << EOF | sudo tee /etc/systemd/system/kube-scheduler.service
+                  [Unit]
+                  Description=Kubernetes Scheduler
+                  Documentation=https://github.com/kubernetes/kubernetes
+                  
+                  [Service]
+                  ExecStart=/usr/local/bin/kube-scheduler \
+                    --config=/etc/kubernetes/config/kube-scheduler.yaml \
+                    --v=2
+                  Restart=on-failure
+                  RestartSec=5
+                  
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+                  systemctl daemon-reload
+                  systemctl enable kube-apiserver kube-controller-manager kube-scheduler
+                  systemctl start kube-apiserver kube-controller-manager kube-scheduler
+            hHealthzEndpointInNginx:
+              cwd: "/tmp"
+              command:
+                !Sub |
+                  cat > kubernetes.default.svc.cluster.local << EOF
+                  server {
+                    listen      80;
+                    server_name kubernetes.default.svc.cluster.local;
+                  
+                    location /healthz {
+                       proxy_pass                    https://127.0.0.1:6443/healthz;
+                       proxy_ssl_trusted_certificate /var/lib/kubernetes/ca.pem;
+                    }
+                  }
+                  EOF
+                  mv kubernetes.default.svc.cluster.local /etc/nginx/sites-available/kubernetes.default.svc.cluster.local
+                  ln -s /etc/nginx/sites-available/kubernetes.default.svc.cluster.local /etc/nginx/sites-enabled/
+                  systemctl restart nginx
+                  systemctl enable nginx
+                  curl -H "Host: kubernetes.default.svc.cluster.local" -i http://127.0.0.1/healthz
+            iKubeRBACPermsSetup:
+              cwd: "/certs"
+              command:
+                !Sub |
+                  # Need a sleep here to allow the cluster API to be ready to perform this apply
+                  sleep 60			
+                  cat << EOF | kubectl apply --kubeconfig admin.kubeconfig -f -
+                  apiVersion: rbac.authorization.k8s.io/v1beta1
+                  kind: ClusterRole
+                  metadata:
+                    annotations:
+                      rbac.authorization.kubernetes.io/autoupdate: "true"
+                    labels:
+                      kubernetes.io/bootstrapping: rbac-defaults
+                    name: system:kube-apiserver-to-kubelet
+                  rules:
+                    - apiGroups:
+                        - ""
+                      resources:
+                        - nodes/proxy
+                        - nodes/stats
+                        - nodes/log
+                        - nodes/spec
+                        - nodes/metrics
+                      verbs:
+                        - "*"
+                  EOF
+                  cat << EOF | kubectl apply --kubeconfig admin.kubeconfig -f -
+                  apiVersion: rbac.authorization.k8s.io/v1beta1
+                  kind: ClusterRoleBinding
+                  metadata:
+                    name: system:kube-apiserver
+                    namespace: ""
+                  roleRef:
+                    apiGroup: rbac.authorization.k8s.io
+                    kind: ClusterRole
+                    name: system:kube-apiserver-to-kubelet
+                  subjects:
+                    - apiGroup: rbac.authorization.k8s.io
+                      kind: User
+                      name: kubernetes
+                  EOF
+              test: 
+                !Sub |
+                  count=`kubectl get ClusterRole system:kube-apiserver-to-kubelet| grep -c AGE`
+                  if [ $count > 0 ]; then
+                    exit 1
+                  else
+                    exit 0
+                  fi
+            yDontMoveOnTilControllerPlaneIsActive:
+              cwd: "/certs"
+              command:
+                !Sub |
+                  while [ `kubectl --kubeconfig admin.kubeconfig get componentstatuses | grep -c Healthy` -ne "5" ] ; do
+                    sleep 10
+                  done
+            zRegisterWithLoadBalancer:
+              cwd: "/tmp"
+              command:
+                !Sub |
+                  aws elb register-instances-with-load-balancer --load-balancer-name ${ELBName} --region ${AWS::Region} --instances `curl http://169.254.169.254/latest/meta-data/instance-id`
+Outputs:
+  ControllerHostOut:
+    Description: ControllerHost created
+    Value: !Ref ControllerHost
+    Export:
+      Name: !Sub "${AWS::StackName}-ControllerHost"

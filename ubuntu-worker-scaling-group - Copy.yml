@@ -1,0 +1,447 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  BastionAMIImage:
+    Description: AMI to use for controller
+    Type: AWS::EC2::Image::Id
+    Default: ami-061a2d878e5754b62
+  EC2KeyPair:
+    Description: EC2 Keypair
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: aws-eu-keys
+  SecurityGroup:
+    Description: EC2 Security Group
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-031515e6e69c24bc3
+  AZ1:
+    Description: AZ1
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-2a
+  AZ2:
+    Description: AZ2
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-2b
+  AZ3:
+    Description: AZ3
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-2c
+  Subnet1:
+    Description: Subnet1
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-09cbe0450fd421d6f
+  Subnet2:
+    Description: Subnet2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0d98788aa5973e1f9
+  Subnet3:
+    Description: Subnet3
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-02f976d73d1575d92
+  InstanceProfile:
+    Description: IAM Profile
+    Type: String
+    Default: t1-Roles-163S3NZJ99DQC-RootInstanceProfile-13JE9DEAYRPUR
+  InstanceRole:
+    Description: IAM Role
+    Type: String
+    Default: t1-Roles-163S3NZJ99DQC-RootRole-1RQPN5P8SUGXQ
+  CertsS3Bucket:
+    Description: Certs S3 Bucket
+    Type: String
+    Default: t1-buckets-l1be4romo585-s3bucket-3iqloa2i7ys5
+  LbName:
+    Description: Name of Load Balancer
+    Type: String
+    Default: t1-LB-19S-MyLoadBa-GBKQBOD6M94H
+  MaxNumberOfWorkers:
+    Description: Max Number Of Workers
+    Type: String
+    Default: '5'
+  MinNumberOfWorkers:
+    Description: Min Number Of Workers
+    Type: String
+    Default: '4'
+Resources:
+  WorkerScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    CreationPolicy:
+      ResourceSignal:
+        Count: !Ref MinNumberOfWorkers
+        Timeout: "PT8M"
+    Properties:
+      VPCZoneIdentifier:
+      - !Ref Subnet1
+      - !Ref Subnet2
+      - !Ref Subnet3
+      MaxSize: !Ref MaxNumberOfWorkers
+      MinSize: !Ref MinNumberOfWorkers
+      AvailabilityZones: 
+      - !Ref AZ1
+      - !Ref AZ2
+      - !Ref AZ3
+      LaunchConfigurationName: !Ref WorkerLaunchConfig
+      LoadBalancerNames:
+      - !Ref LbName	  
+    Metadata:
+      AWS::CloudFormation::Init: 
+        config: 
+          groups: 
+            users: {}
+          users: 
+            user:
+              groups:
+                - 'users'
+              uid: '501'
+              homeDir: "/home/user"
+          packages:
+            apt:
+              awscli: []
+              jq: []
+          files: 
+            "/usr/local/bin/cfssl":
+              source: "https://pkg.cfssl.org/R1.2/cfssl_linux-amd64"
+              group: root
+              owner: user
+              mode: "000550"
+            "/usr/local/bin/cfssljson":
+              source: "https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64"
+              group: root
+              owner: user
+              mode: "000550"
+            "/usr/local/bin/kubectl":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kubectl"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/etcd-v3.3.5-linux-amd64.tar.gz":
+              source: "https://github.com/coreos/etcd/releases/download/v3.3.5/etcd-v3.3.5-linux-amd64.tar.gz"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/kube-apiserver":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kube-apiserver"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/kube-controller-manager":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kube-controller-manager"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/kube-scheduler":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kube-scheduler"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/kubectl":
+              source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kubectl"
+              group: root
+              owner: user
+              mode: "000550"			  
+            "/certs/ca-config.json":
+              mode: "000550"
+              group: root
+              owner: root			  
+              content:
+                Fn::Join:
+                  - "\n"
+                  -
+                    - '{'
+                    - '  "signing": {'
+                    - '    "default": {'
+                    - '      "expiry": "8760h"'
+                    - '    },'
+                    - '   "profiles": {'
+                    - '      "kubernetes": {'
+                    - '        "usages": ["signing", "key encipherment", "server auth", "client auth"],'
+                    - '        "expiry": "8760h"'
+                    - '      }'
+                    - '    }'
+                    - '  }'
+                    - '}'
+          commands:
+            1testcfssl: 
+              command: "cfssl version"
+            2testkubectl: 
+              command: "kubectl version --client"
+            3copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/ca.pem . --region "
+                    - !Sub "${AWS::Region}"
+            4copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/ca-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            5copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/kubernetes-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            6copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/kubernetes.pem . --region "
+                    - !Sub "${AWS::Region}"
+            7copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/service-account.pem . --region "
+                    - !Sub "${AWS::Region}"
+            8copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/service-account-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            9copyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/admin.pem . --region "
+                    - !Sub "${AWS::Region}"
+            acopyCerts:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/admin-key.pem . --region "
+                    - !Sub "${AWS::Region}"
+            bgenerateControllerKubeConfig:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - 'kubectl config set-cluster kubernetes-the-hard-way '
+                    - ' --certificate-authority=ca.pem'
+                    - ' --embed-certs=true'
+                    - ' --server=https://127.0.0.1:6443'
+                    - " --kubeconfig=kube-controller-manager.kubeconfig\n"
+                    - 'kubectl config set-credentials system:kube-controller-manager '
+                    - ' --client-certificate=kube-controller-manager.pem'
+                    - ' --client-key=kube-controller-manager-key.pem'
+                    - ' --embed-certs=true'
+                    - " --kubeconfig=kube-controller-manager.kubeconfig\n"
+                    - 'kubectl config set-context default '
+                    - ' --cluster=kubernetes-the-hard-way'
+                    - ' --user=system:kube-controller-manager'
+                    - " --kubeconfig=kube-controller-manager.kubeconfig\n"
+                    - "kubectl config use-context default --kubeconfig=kube-controller-manager.kubeconfig\n"
+            cgenerateSchedulerKubeConfig:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - 'kubectl config set-cluster kubernetes-the-hard-way '
+                    - ' --certificate-authority=ca.pem'
+                    - ' --embed-certs=true'
+                    - ' --server=https://127.0.0.1:6443'
+                    - " --kubeconfig=kube-scheduler.kubeconfig\n"
+                    - 'kubectl config set-credentials system:kube-controller-manager '
+                    - ' --client-certificate=kube-scheduler.pem'
+                    - ' --client-key=kube-scheduler-key.pem'
+                    - ' --embed-certs=true'
+                    - " --kubeconfig=kube-scheduler.kubeconfig\n"
+                    - 'kubectl config set-context default '
+                    - ' --cluster=kubernetes-the-hard-way'
+                    - ' --user=system:kube-scheduler'
+                    - " --kubeconfig=kube-scheduler.kubeconfig\n"
+                    - "kubectl config use-context default --kubeconfig=kube-scheduler.kubeconfig\n"
+            dgenerateAdminKubeConfig:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - 'kubectl config set-cluster kubernetes-the-hard-way '
+                    - ' --certificate-authority=ca.pem'
+                    - ' --embed-certs=true'
+                    - ' --server=https://127.0.0.1:6443'
+                    - " --kubeconfig=admin.kubeconfig\n"
+                    - 'kubectl config set-credentials admin '
+                    - ' --client-certificate=admin.pem'
+                    - ' --client-key=admin-key.pem'
+                    - ' --embed-certs=true'
+                    - " --kubeconfig=admin.kubeconfig\n"
+                    - 'kubectl config set-context default '
+                    - ' --cluster=kubernetes-the-hard-way'
+                    - ' --user=admin'
+                    - " --kubeconfig=admin.kubeconfig\n"
+                    - "kubectl config use-context default --kubeconfig=admin.kubeconfig\n"
+            ecopyEncryptionKey:
+              cwd: "/certs"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp s3://"
+                    - !Ref CertsS3Bucket
+                    - "/encryption-config.yaml . --region "
+                    - !Sub "${AWS::Region}"
+            fInstallEtcd:
+              cwd: "/tmp"
+              command: 
+                !Sub |
+                  tar -xvf etcd-v3.3.5-linux-amd64.tar.gz
+                  mv etcd-v3.3.5-linux-amd64/etcd* /usr/local/bin
+                  mkdir -p /etc/etcd /var/lib/etcd
+                  cp /certs/ca.pem /certs/kubernetes-key.pem /certs/kubernetes.pem /etc/etcd/
+                  INTERNAL_IP=`curl http://169.254.169.254/latest/meta-data/local-ipv4`
+                  INSTANCE_ID=`curl http://169.254.169.254/latest/meta-data/instance-id`
+                  ETCD_NAME=`curl http://169.254.169.254/latest/meta-data/public-hostname`
+                  ASG_NAME=`aws autoscaling describe-auto-scaling-groups --region ${AWS::Region} | jq --raw-output ".[] | map(select(.Instances[].InstanceId | contains(\"$INSTANCE_ID\"))) | .[].AutoScalingGroupName"`
+                  INSTANCE_IDS=`aws autoscaling describe-auto-scaling-groups --region ${AWS::Region} --auto-scaling-group-name $ASG_NAME | jq .AutoScalingGroups[0].Instances[].InstanceId | xargs`
+                  etcd_peer_urls=`aws ec2 describe-instances --region ${AWS::Region} --instance-ids $INSTANCE_IDS | jq -r '.Reservations[].Instances | map("https://" + .NetworkInterfaces[].PrivateIpAddress + ":2379")[]'`
+                  etcd_existing_peer_urls=
+                  etcd_existing_peer_names=
+                  etcd_good_member_url=
+                  for url in $etcd_peer_urls; do
+                      echo $url
+                      echo $INTERNAL_IP
+                      case "$url" in
+                          *$INTERNAL_IP*) continue;;
+                      esac
+                      etcd_members=`curl -f -s --cacert /etc/etcd/ca.pem   --cert /etc/etcd/kubernetes.pem   --key /etc/etcd/kubernetes-key.pem  "$url/v2/members"`
+                   
+                      if [[ $? == 0 && $etcd_members ]]; then
+                          etcd_good_member_url="$url"
+                          echo "etcd_members=$etcd_members"
+                          etcd_existing_peer_urls=$(echo "$etcd_members" | jq --raw-output .[][].peerURLs[0])
+                          etcd_existing_peer_names=$(echo "$etcd_members" | jq --raw-output .[][].name)
+                          break
+                      fi
+                  done
+                  if [[ $etcd_existing_peer_urls && $etcd_existing_peer_names != *"$INSTANCE_ID"* ]]; then
+                    echo "joining existing cluster"
+                    peer_regexp=`echo "$etcd_peer_urls" | sed 's/^.*http:\/\/\([0-9.]*\):[0-9]*.*$/contains(\\"\1\\")/' | xargs | sed 's/ */ or /g'`
+                    bad_peer=`echo "$etcd_members" | jq --raw-output ".[] | map(select(.peerURLs[] | $peer_regexp | not )) | .[].id"`                    
+                    if [[ $bad_peer ]]; then
+                      for bp in $bad_peer; do
+                        echo "removing bad peer $bp"
+                        curl -f -s --cacert /etc/etcd/ca.pem   --cert /etc/etcd/kubernetes.pem   --key /etc/etcd/kubernetes-key.pem "$etcd_good_member_url/v2/members/$bp" -XDELETE
+                      done
+                    fi
+                    etcd_initial_cluster=`curl -s -f --cacert /etc/etcd/ca.pem   --cert /etc/etcd/kubernetes.pem   --key /etc/etcd/kubernetes-key.pem "$etcd_good_member_url/v2/members" | jq --raw-output '.[] | map(.name + "=" + .peerURLs[0]) | .[]' | xargs | sed 's/ */,/g'``echo ",$INSTANCE_ID=http://$INTERNAL_IP:2380"`
+                    echo "adding instance ID $INSTANCE_ID with IP $INTERNAL_IP"
+                    curl -f -s  --cacert /etc/etcd/ca.pem   --cert /etc/etcd/kubernetes.pem   --key /etc/etcd/kubernetes-key.pem -XPOST "$etcd_good_member_url/v2/members" -H "Content-Type: application/json" -d "{\"peerURLs\": [\"http://$INTERNAL_IP:2380\"], \"name\": \"$INSTANCE_ID\"}"
+                    INITIAL_CLUSTER_OPTIONS=" "					
+                  else
+                    echo "creating new cluster"
+                    INITIAL_CLUSTER=`aws ec2 describe-instances --region ${AWS::Region} --instance-ids $INSTANCE_IDS | jq -r '.Reservations[].Instances | map(.InstanceId+ "=https://" + .PrivateIpAddress + ":2380")[]' | tr  '\n' ' ' | sed 's/[[:space:]][[:space:]]*/,/g' `
+                    INITIAL_CLUSTER_OPTIONS=" --initial-cluster-token etcd-cluster-0 --initial-cluster $INITIAL_CLUSTER --initial-cluster-state new"
+                  fi
+                  cat << EOF | sudo tee /etc/systemd/system/etcd.service
+                  [Unit]
+                  Description=etcd
+                  Documentation=https://github.com/coreos
+                  
+                  [Service]
+                  ExecStart=/usr/local/bin/etcd \
+                    --name $INSTANCE_ID \
+                    --cert-file=/etc/etcd/kubernetes.pem \
+                    --key-file=/etc/etcd/kubernetes-key.pem \
+                    --peer-cert-file=/etc/etcd/kubernetes.pem \
+                    --peer-key-file=/etc/etcd/kubernetes-key.pem \
+                    --trusted-ca-file=/etc/etcd/ca.pem \
+                    --peer-trusted-ca-file=/etc/etcd/ca.pem \
+                    --peer-client-cert-auth \
+                    --client-cert-auth \
+                    --initial-advertise-peer-urls https://$INTERNAL_IP:2380 \
+                    --listen-peer-urls https://$INTERNAL_IP:2380 \
+                    --listen-client-urls https://$INTERNAL_IP:2379,https://127.0.0.1:2379 \
+                    --advertise-client-urls https://$INTERNAL_IP:2379 \
+                    $INITIAL_CLUSTER_OPTIONS \
+                    --data-dir=/var/lib/etcd
+                  Restart=on-failure
+                  RestartSec=5
+                  
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+                  systemctl daemon-reload
+                  systemctl enable etcd
+                  systemctl start etcd
+            gInstallKubernetesController:
+              cwd: "/tmp"
+              command: 
+                !Sub |
+                  mkdir -p /etc/kubernetes/config
+                  chmod +x kube-apiserver kube-controller-manager kube-scheduler kubectl
+                  mv kube-apiserver kube-controller-manager kube-scheduler kubectl /usr/local/bin/
+  WorkerLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !Ref BastionAMIImage
+      IamInstanceProfile: !Ref InstanceProfile
+      InstanceType: t2.micro
+      InstanceMonitoring: false
+      KeyName: !Ref EC2KeyPair
+      AssociatePublicIpAddress: true
+      SecurityGroups:
+      - !Ref SecurityGroup
+      UserData: 
+        Fn::Base64:
+          Fn::Join:
+            - ""
+            -
+              - "#!/bin/bash -v\n"
+              - "# Install AWS cfn tools for ubuntu\n"
+              - "apt-get update\n"
+              - "apt-get -y install python-setuptools\n"
+              - "mkdir aws-cfn-bootstrap-latest\n"
+              - "curl https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz | tar xz -C aws-cfn-bootstrap-latest --strip-components 1\n"
+              - "easy_install aws-cfn-bootstrap-latest\n"
+              - "# Function to return error code to the wait handle\n"
+              - "function handle_error\n"
+              - "{\n"
+              - !Sub " /usr/local/bin/cfn-signal -e 1 -s false --stack ${AWS::StackName} -r 'Failed to run cfn-init' --resource WorkerScalingGroup --region ${AWS::Region}\n"
+              - " exit 1\n"
+              - "}\n"
+              - !Sub "/usr/local/bin/cfn-init -s ${AWS::StackName} -r WorkerScalingGroup --region ${AWS::Region} || handle_error 'Failed to run cfn-init'\n"
+              - "# Return success\n"
+              - !Sub "/usr/local/bin/cfn-signal -e 0 -s true --stack ${AWS::StackName} -r 'Stack complete' --resource WorkerScalingGroup --region ${AWS::Region}\n"
+Outputs:
+  WorkerGroupOut:
+    Description: WorkerScalingGroup created
+    Value: !Ref WorkerScalingGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-WorkerScalingGroup"

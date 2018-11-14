@@ -10,11 +10,23 @@ Parameters:
   SubnetAZ3:
     Description: Availability Zone for Subnet 3
     Type: AWS::EC2::AvailabilityZone::Name	
+  VPCCIDR:
+    Description: CIDR for VPC
+    Type: String
+  SubnetCIDR1:
+    Description: CIDR for Subnet 1
+    Type: String
+  SubnetCIDR2:
+    Description: CIDR for Subnet 1
+    Type: String
+  SubnetCIDR3:
+    Description: CIDR for Subnet 3
+    Type: String
 Resources:
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: 172.31.0.0/16
+      CidrBlock: !Ref VPCCIDR
       EnableDnsSupport: true
       EnableDnsHostnames: true
       InstanceTenancy: default
@@ -30,21 +42,21 @@ Resources:
     Properties:
       AvailabilityZone: !Ref SubnetAZ1
       VpcId: !Ref VPC
-      CidrBlock: 172.31.0.0/20
+      CidrBlock: !Ref SubnetCIDR1
       MapPublicIpOnLaunch: true
   SubnetB:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: !Ref SubnetAZ2
       VpcId: !Ref VPC
-      CidrBlock: 172.31.16.0/20
+      CidrBlock: !Ref SubnetCIDR2
       MapPublicIpOnLaunch: true
   SubnetC:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: !Ref SubnetAZ3
       VpcId: !Ref VPC
-      CidrBlock: 172.31.32.0/20
+      CidrBlock: !Ref SubnetCIDR3
       MapPublicIpOnLaunch: true
   RouteTable:
     Type: AWS::EC2::RouteTable
@@ -91,6 +103,18 @@ Resources:
           FromPort: '8080'
           ToPort: '8080'
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '2380'
+          ToPort: '2380'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '2379'
+          ToPort: '2379'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '6443'
+          ToPort: '6443'
+          CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -100,6 +124,11 @@ Outputs:
     Value: !Ref SecurityGroup
     Export:
       Name: !Sub "${AWS::StackName}-SecurityGroup"
+  VPCOut:
+    Description: VPC created
+    Value: !Ref VPC
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCGroup"
   SubnetAOut:
     Description: SubnetA created
     Value: !Ref SubnetA

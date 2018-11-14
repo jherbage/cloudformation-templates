@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  InstancePort:
+    Description: Port the instances listen on
+    Type: String
+    Default: '6443'
+  LBPort:
+    Description: Port the LB listens on
+    Type: String
+    Default: '80'
+  LBProtocol:
+    Description: LB Protocol
+    Type: String
+    Default: 'TCP'
+  InstanceProtocol:
+    Description: LB Protocol
+    Type: String
+    Default: 'TCP'
+  Subnet1:
+    Description: Subnet1
+    Type: AWS::EC2::Subnet::Id
+  Subnet2:
+    Description: Subnet2
+    Type: AWS::EC2::Subnet::Id
+  Subnet3:
+    Description: Subnet3
+    Type: AWS::EC2::Subnet::Id
+  SecurityGroup:
+    Description: EC2 Security Group
+    Type: AWS::EC2::SecurityGroup::Id
+Resources: 
+  MyLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      SecurityGroups:
+      - !Ref SecurityGroup
+      Subnets:
+      - !Ref Subnet1
+      - !Ref Subnet2
+      - !Ref Subnet3
+      Listeners:
+      - LoadBalancerPort: !Ref LBPort
+        InstancePort: !Ref InstancePort
+        Protocol: !Ref LBProtocol
+        InstanceProtocol: !Ref InstanceProtocol
+Outputs:
+  LoadBalancerOut:
+    Description: LoadBalancer created
+    Value: !Ref MyLoadBalancer
+    Export:
+      Name: !Sub "${AWS::StackName}-LoadBalancer"
+  LbDNSOut:
+    Description: LoadBalancer DNS address
+    Value: !GetAtt MyLoadBalancer.DNSName
+    Export:
+      Name: !Sub "${AWS::StackName}-LoadBalancerDNSAddr"
