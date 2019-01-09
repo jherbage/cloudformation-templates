@@ -33,6 +33,9 @@ Parameters:
   Controller3Addr:
     Description: Private IP Address for controller3
     Type: String
+  ELBPrivateIPRange:
+    Description: The range of IP addresses the ELB could use
+    Type: String
 Resources:
   BastionHost:
     Type: AWS::EC2::Instance
@@ -404,7 +407,9 @@ Resources:
                 Fn::Join:
                   - ""
                   -
-                    - 'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -hostname=10.32.0.1,localhost,kubernetes.default,127.0.0.1,'
+                    - 'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -hostname='
+                    - !Ref ELBPrivateIPRange
+                    - ',10.32.0.1,localhost,kubernetes.default,127.0.0.1,'
                     - !Ref LbDNSAddr
                     - ','
                     - !Ref Controller1Addr

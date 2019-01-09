@@ -85,7 +85,7 @@ Resources:
       - !Ref AZ3
       LaunchConfigurationName: !Ref WorkerLaunchConfig
       LoadBalancerNames:
-      - !Ref LbName	  
+      - !Ref LbName
     Metadata:
       AWS::CloudFormation::Init: 
         config: 
@@ -433,7 +433,21 @@ Resources:
                   kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=`kubectl version | base64 | tr -d '\n'`&env.IPALLOC_RANGE=10.200.0.0/16"
               test:
                 !Sub |
-                  count=`kubectl get pods -n kube-system| grep -c AGE`
+                  count=`kubectl get pods -n kube-system| grep weave| grep -c AGE`
+                  if [ $count > 0 ]; then
+                    exit 1
+                  else
+                    exit 0
+                  fi
+            dinstallKubeDnsNet:
+              cwd: "/certs"
+              command:
+                !Sub |
+                  sleep 20
+                  kubectl create -f https://storage.googleapis.com/kubernetes-the-hard-way/kube-dns.yaml
+              test:
+                !Sub |
+                  count=`kubectl get pods -l k8s-app=kube-dns -n kube-system| grep -c AGE`
                   if [ $count > 0 ]; then
                     exit 1
                   else

@@ -43,6 +43,8 @@ Resources:
         InstancePort: !Ref InstancePort
         Protocol: !Ref LBProtocol
         InstanceProtocol: !Ref InstanceProtocol
+      ConnectionSettings:
+        IdleTimeout: 300
 Outputs:
   LoadBalancerOut:
     Description: LoadBalancer created

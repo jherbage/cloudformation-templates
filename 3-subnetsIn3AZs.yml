@@ -1,0 +1,84 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  SubnetAZ1:
+    Description: Availability Zone for Subnet 1
+    Type: AWS::EC2::AvailabilityZone::Name
+  SubnetAZ2:
+    Description: Availability Zone for Subnet 1
+    Type: AWS::EC2::AvailabilityZone::Name
+  SubnetAZ3:
+    Description: Availability Zone for Subnet 3
+    Type: AWS::EC2::AvailabilityZone::Name	
+  VPC:
+    Description: VPC to use
+    Type: String
+  VPCRouteTable:
+    Description: VPC Route table
+    Type: String
+  SubnetCIDR1:
+    Description: CIDR for Subnet 1
+    Type: String
+  SubnetCIDR2:
+    Description: CIDR for Subnet 1
+    Type: String
+  SubnetCIDR3:
+    Description: CIDR for Subnet 3
+    Type: String
+Resources:
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref SubnetAZ1
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCIDR1
+      MapPublicIpOnLaunch: true
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref SubnetAZ2
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCIDR2
+      MapPublicIpOnLaunch: true
+  SubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref SubnetAZ3
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCIDR3
+      MapPublicIpOnLaunch: true
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  SubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VPCRouteTable
+      SubnetId: !Ref SubnetA
+  SubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VPCRouteTable
+      SubnetId: !Ref SubnetB
+  SubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref VPCRouteTable
+      SubnetId: !Ref SubnetC
+Outputs:
+  SubnetAOut:
+    Description: SubnetA created
+    Value: !Ref SubnetA
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetA"
+  SubnetBOut:
+    Description: SubnetB created
+    Value: !Ref SubnetB
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetB"
+  SubnetCOut:
+    Description: SubnetC created
+    Value: !Ref SubnetC
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetC"

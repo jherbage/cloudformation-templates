@@ -2,7 +2,7 @@
 AWSTemplateFormatVersion: 2010-09-09
 Parameters:
   TemplateS3Bucket:
-    Description: s£ Bucket with the stack templates at top level
+    Description: s3 Bucket with the stack templates at top level
     Type: String
     Default: 'https://s3.eu-west-2.amazonaws.com/jherbagecftemplates'
   AMIImage:
@@ -32,15 +32,27 @@ Parameters:
   SubnetCIDR1:
     Description: CIDR Subnet 1
     Type: String
-    Default: 172.31.0.0/20
+    Default: 172.31.0.0/26
   SubnetCIDR2:
     Description: CIDR Subnet 2
     Type: String
-    Default: 172.31.16.0/20
+    Default: 172.31.16.0/26
   SubnetCIDR3:
     Description: CIDR Subnet 3
     Type: String
-    Default: 172.31.32.0/20
+    Default: 172.31.32.0/26
+  ELBSubnetCIDR1:
+    Description: CIDR Subnet 1
+    Type: String
+    Default: 172.31.0.100/28
+  ELBSubnetCIDR2:
+    Description: CIDR Subnet 2
+    Type: String
+    Default: 172.31.16.100/28
+  ELBSubnetCIDR3:
+    Description: CIDR Subnet 3
+    Type: String
+    Default: 172.31.32.100/28
   MaxNumberOfWorkers:
     Description: Max Number of Workers
     Type: String
@@ -48,7 +60,7 @@ Parameters:
   MinNumberOfWorkers:
     Description: Min Number of Workers
     Type: String
-    Default: '3'
+    Default: '2'
   KubernetesServicePortRange:
     Description: Port range for service addresses
     Type: String
@@ -66,9 +78,9 @@ Resources:
       TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/load-balancer.yml']]
       Parameters:
         SecurityGroup: !GetAtt Network.Outputs.SecurityGroupOut	        
-        Subnet1: !GetAtt Network.Outputs.SubnetAOut	
-        Subnet2: !GetAtt Network.Outputs.SubnetBOut	
-        Subnet3: !GetAtt Network.Outputs.SubnetCOut	
+        Subnet1: !GetAtt ELBSubnets.Outputs.SubnetAOut	
+        Subnet2: !GetAtt ELBSubnets.Outputs.SubnetBOut	
+        Subnet3: !GetAtt ELBSubnets.Outputs.SubnetCOut	
         InstancePort: '6443'
         LBPort: '6443'
         InstanceProtocol: 'TCP'
@@ -91,6 +103,20 @@ Resources:
         SubnetCIDR2: !Ref SubnetCIDR2
         SubnetCIDR3: !Ref SubnetCIDR3
         VPCCIDR: !Ref VPCCIDR
+  ELBSubnets:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/3-subnetsIn3AZs.yml']]
+      Parameters:
+        VPC: !GetAtt Network.Outputs.VPCOut	
+        VPCRouteTable: !GetAtt Network.Outputs.VPCRouteTableOut
+        SubnetAZ1: !Ref SubnetAZ1
+        SubnetAZ2: !Ref SubnetAZ2
+        SubnetAZ3: !Ref SubnetAZ3
+        SubnetCIDR1: !Ref ELBSubnetCIDR1
+        SubnetCIDR2: !Ref ELBSubnetCIDR2
+        SubnetCIDR3: !Ref ELBSubnetCIDR3
   BastionHost:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -104,6 +130,7 @@ Resources:
         InstanceProfile: !GetAtt Roles.Outputs.RootInstanceProfileOut
         CertsS3Bucket: !GetAtt Buckets.Outputs.s3BucketOut
         LbDNSAddr: !GetAtt LB.Outputs.LbDNSOut
+        ELBPrivateIPRange: 172.31.16.96,172.31.16.97,172.31.16.98,172.31.16.99,172.31.16.100,172.31.16.101,172.31.16.102,172.31.16.103,172.31.16.104,172.31.16.105,172.31.16.106,172.31.16.107,172.31.16.108,172.31.16.109,172.31.16.110,172.31.16.111,172.31.32.96,172.31.32.97,172.31.32.98,172.31.32.99,172.31.32.100,172.31.32.101,172.31.32.102,172.31.32.103,172.31.32.104,172.31.32.105,172.31.32.106,172.31.32.107,172.31.32.108,172.31.32.109,172.31.32.110,172.31.32.111,172.31.0.96,172.31.0.97,172.31.0.98,172.31.0.99,172.31.0.100,172.31.0.101,172.31.0.102,172.31.0.103,172.31.0.104,172.31.0.105,172.31.0.106,172.31.0.107,172.31.0.108,172.31.0.109,172.31.0.110,172.31.0.111
         Controller1Addr: 
           !Join
             - '.'
@@ -245,3 +272,29 @@ Resources:
               - !Select [1, !Split [ ".", !Ref SubnetCIDR2]]
               - !Select [2, !Split [ ".", !Ref SubnetCIDR2]]
               - '4'
+  WorkerScalingGroup:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: 
+      - ControllerHost3
+      - ControllerHost2
+      - ControllerHost1
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/ubuntu-worker-scaling-group.yml']]
+      Parameters: 
+        AMIImage: !Ref AMIImage
+        EC2KeyPair: !Ref EC2KeyPair
+        Subnet1: !GetAtt Network.Outputs.SubnetAOut
+        Subnet2: !GetAtt Network.Outputs.SubnetBOut
+        Subnet3: !GetAtt Network.Outputs.SubnetCOut
+        AZ1: !Ref SubnetAZ1
+        AZ2: !Ref SubnetAZ2
+        AZ3: !Ref SubnetAZ3
+        SecurityGroup: !GetAtt Network.Outputs.SecurityGroupOut	
+        InstanceProfile: !GetAtt Roles.Outputs.RootInstanceProfileOut
+        InstanceRole: !GetAtt Roles.Outputs.RootRoleOut
+        CertsS3Bucket: !GetAtt Buckets.Outputs.s3BucketOut
+        LbName: !GetAtt LB.Outputs.LoadBalancerOut
+        LbDNSAddr: !GetAtt LB.Outputs.LbDNSOut
+        MaxNumberOfWorkers: !Ref MaxNumberOfWorkers
+        MinNumberOfWorkers: !Ref MinNumberOfWorkers

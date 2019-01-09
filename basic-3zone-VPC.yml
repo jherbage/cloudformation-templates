@@ -115,6 +115,10 @@ Resources:
           FromPort: '6443'
           ToPort: '6443'
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '10250'
+          ToPort: '10250'
+          CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -129,6 +133,11 @@ Outputs:
     Value: !Ref VPC
     Export:
       Name: !Sub "${AWS::StackName}-VPCGroup"
+  VPCRouteTableOut:
+    Description: VPC RouteTable created
+    Value: !Ref RouteTable
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCRouteTable"
   SubnetAOut:
     Description: SubnetA created
     Value: !Ref SubnetA
