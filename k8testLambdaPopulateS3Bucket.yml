@@ -1,0 +1,192 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  RepoUrl:
+    Description: Github Reository where the lambda function code is
+    Type: String
+    Default: 'https://raw.github.com/jherbage/KubernetesLambdaClientTest/master'
+  TempS3Bucket:
+    Description: Temporary S3 bucket name to store the fucntion zip
+    Type: String
+    Default: k2-tempbucket-2iqvdyhtc551-s3bucket-1bm9i4fk83t8h
+  CertsS3Bucket:
+    Description: S3 Bucket where the kub config and certs are
+    Type: String
+    Default: k2-certbucket-1smvvns9s4z6c-s3bucket-7po4iychofey
+  WorkerASG:
+    Description: The worker ASG for the K8 cluster
+    Type: String
+    Default: k2-WorkerScalingGroup-1EM6DGOD6KYZ-WorkerScalingGroup-KH2YTKWK98PF
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal: {Service: [lambda.amazonaws.com]}
+          Action: ['sts:AssumeRole']
+      Path: /
+      ManagedPolicyArns:
+      - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+      - PolicyName: ASGEC2Policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'autoscaling:DescribeAutoScalingGroups'
+                - 'autoscaling:DescribeAutoScalingInstances'
+                - 'ec2:DescribeInstances'
+              Resource: 
+                - '*'
+      - PolicyName: S3Policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 's3:*'
+              Resource: 
+                - !Join ['', ['arn:aws:s3:::', !Ref TempS3Bucket, '/*']]
+                - !Join ['', ['arn:aws:s3:::', !Ref CertsS3Bucket, '/*']]
+                - !Join ['', ['arn:aws:s3:::', !Ref CertsS3Bucket]]
+                - !Join ['', ['arn:aws:s3:::', !Ref TempS3Bucket]]
+      - PolicyName: lambdalogtocloudwatch
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'logs:CreateLogGroup'
+                - 'logs:CreateLogStream'
+                - 'logs:PutLogEvents'
+              Resource: 'arn:aws:logs:*:*:*'  
+  KubernetesClusterTestFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Smokes tests a new Kubernetes cluster
+      MemorySize: 512
+      Handler: kubernetesTest.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref TempS3Bucket
+        S3Key: kubernetesTest.zip
+      Timeout: 600
+      Runtime: python2.7
+    DependsOn: 
+      - CreateZipFiles
+      - LambdaExecutionRole
+  SmokeTestCluster:
+    Type: Custom::LambdaCallout
+    Properties:
+      ServiceToken: !GetAtt KubernetesClusterTestFunction.Arn
+      Region: !Ref "AWS::Region"
+      WorkerASG: !Ref WorkerASG
+  CreateZipFiles:
+    Type: Custom::LambdaCallout
+    Properties:
+      ServiceToken: !GetAtt S3UploadObject.Arn
+      Region: !Ref "AWS::Region"
+      temp_bucket: !Ref TempS3Bucket
+      cert_bucket: !Ref CertsS3Bucket
+      repo_url: !Ref RepoUrl	  
+  S3UploadObject:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Uploads contents of github repo to S3.
+      MemorySize: 512
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import cfnresponse
+          import urllib2
+          import bz2
+          from bz2 import decompress
+          import tarfile
+          import zipfile
+          import os
+          import base64
+          import shutil
+          from urllib2 import urlopen, URLError, HTTPError
+          import boto3
+          def dlfile(url):
+            # Open the url
+            try:
+              f = urlopen(url)
+              print "downloading " + url
+              # Open our local file for writing
+              with open(os.path.basename(url), "wb") as local_file: 
+                local_file.write(f.read())
+          
+              #handle errors
+            except HTTPError, e:
+              print "HTTP Error:", e.code, url
+            except URLError, e:
+              print "URL Error:", e.reason, url
+          
+          def handler(event, context):
+            s3client = boto3.client('s3', region_name=event['ResourceProperties']['Region'])
+            if event['RequestType'] == 'Create':
+              os.chdir('/tmp')
+              #  Download main python script to pwd from github
+              dlfile(event['ResourceProperties']['repo_url']+'/kubernetesTest.py')
+              dlfile(event['ResourceProperties']['repo_url']+'/nginx_deployment.yaml')
+              dlfile(event['ResourceProperties']['repo_url']+'/nginx_service.yaml')
+              dlfile(event['ResourceProperties']['repo_url']+'/nginx_service_update_port.yaml')
+              dlfile('https://raw.githubusercontent.com/jorgebastida/cfn-response/master/cfnresponse.py')
+              
+              # Get certs and config from S3 Certs bucket
+              cert_bucket_name=event['ResourceProperties']['cert_bucket'].replace('arn:aws:s3:::','')
+              s3client.download_file(cert_bucket_name,'admin.pem', 'admin.pem')
+              s3client.download_file(cert_bucket_name,'admin-key.pem', 'admin-key.pem')
+              s3client.download_file(cert_bucket_name,'config', 'config')
+              
+              if not os.path.exists('lambda-function'):
+                os.makedirs('lambda-function')
+              else:
+                shutil.rmtree('lambda-function')
+                os.makedirs('lambda-function')			
+              shutil.copy2('admin.pem', 'lambda-function/admin.pem')
+              shutil.copy2('admin-key.pem', 'lambda-function/admin-key.pem')
+              shutil.copy2('config', 'lambda-function/config')
+              shutil.copy2('kubernetesTest.py', 'lambda-function/kubernetesTest.py')
+              shutil.copy2('cfnresponse.py', 'lambda-function/cfnresponse.py')
+              shutil.copy2('nginx_deployment.yaml', 'lambda-function/nginx_deployment.yaml')
+              shutil.copy2('nginx_service.yaml', 'lambda-function/nginx_service.yaml')
+              shutil.copy2('nginx_service_update_port.yaml', 'lambda-function/nginx_service_update_port.yaml')
+              
+              dlfile(event['ResourceProperties']['repo_url']+'/kubernetesTest.zip')
+              zipref = zipfile.ZipFile('kubernetesTest.zip', 'r')
+              zipref.extractall('lambda-function')
+              zipref.close()	
+              
+              # Get the extra python stuff for zip from githuh
+              
+              # Zip the functions update
+              os.chdir('lambda-function')
+              zf = zipfile.ZipFile("../kubernetesTest.zip", "w")
+              for dirname, subdirs, files in os.walk("."):
+                zf.write(dirname)
+                for filename in files:
+                  zf.write(os.path.join(dirname, filename))
+              zf.close()
+              os.chdir('..')
+            
+              # Upload the zip files to temp S3 bucket
+              
+              # Gte the bucket name from the ARN
+              temp_bucket_name=event['ResourceProperties']['temp_bucket'].replace('arn:aws:s3:::','')
+              s3client.upload_file('./kubernetesTest.zip', temp_bucket_name, 'kubernetesTest.zip')					
+            responseData = {}
+            if event['RequestType'] == 'Create':
+              responseData['bucket_name'] = temp_bucket_name
+            else:
+              responseData['bucket_name'] = 'na'
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+      Timeout: 300
+      Runtime: python2.7

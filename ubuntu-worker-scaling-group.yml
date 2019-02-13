@@ -12,7 +12,7 @@ Parameters:
   SecurityGroup:
     Description: EC2 Security Group
     Type: AWS::EC2::SecurityGroup::Id
-    Default: sg-09cc993bc0d119e3e
+    Default: sg-086c711293fefd821
   AZ1:
     Description: AZ1
     Type: AWS::EC2::AvailabilityZone::Name
@@ -28,39 +28,39 @@ Parameters:
   Subnet1:
     Description: Subnet1
     Type: AWS::EC2::Subnet::Id
-    Default: subnet-0d1cd43a832d3a354
+    Default: subnet-08f8a55994089f939
   Subnet2:
     Description: Subnet2
     Type: AWS::EC2::Subnet::Id
-    Default: subnet-09f42283f3b5b0390
+    Default: subnet-03c1acde2abf232f3
   Subnet3:
     Description: Subnet3
     Type: AWS::EC2::Subnet::Id
-    Default: subnet-0392dd0b88398efd8
+    Default: subnet-044c72de0afe95b6d
   InstanceProfile:
     Description: IAM Profile
     Type: String
-    Default: t1-Roles-1OGXUR8RQY14D-RootInstanceProfile-1K0VN79M6IKLO
+    Default: k2-Roles-1F52V16KTZ6UT-RootInstanceProfile-3TQOQ43V7GB3
   InstanceRole:
     Description: IAM Role
     Type: String
-    Default: t1-Roles-1OGXUR8RQY14D-RootRole-HJOJDAXR8H0
+    Default: k2-Roles-1F52V16KTZ6UT-RootRole-TX1FWNY0SPEG
   CertsS3Bucket:
     Description: Certs S3 Bucket
     Type: String
-    Default: t1-buckets-1tr96ymzihr49-s3bucket-jf2908bxt9kv
+    Default: k2-certbucket-achhh0ogam6s-s3bucket-1t9tewfglllcu
   LbName:
     Description: Name of Load Balancer
     Type: String
-    Default: t1-LB-1U4-MyLoadBa-BUERLNMZ2WAH
+    Default: k2-LB-183-MyLoadBa-1NKOTXBGCYAP3
   LbDNSAddr:
     Description: Address of Load Balancer
     Type: String
-    Default: t1-LB-1U4-MyLoadBa-BUERLNMZ2WAH-1828466948.eu-west-2.elb.amazonaws.com
+    Default: k2-LB-183-MyLoadBa-1NKOTXBGCYAP3-1748680246.eu-west-2.elb.amazonaws.com
   MaxNumberOfWorkers:
     Description: Max Number Of Workers
     Type: String
-    Default: '5'
+    Default: '3'
   MinNumberOfWorkers:
     Description: Min Number Of Workers
     Type: String
@@ -84,8 +84,6 @@ Resources:
       - !Ref AZ2
       - !Ref AZ3
       LaunchConfigurationName: !Ref WorkerLaunchConfig
-      LoadBalancerNames:
-      - !Ref LbName
     Metadata:
       AWS::CloudFormation::Init: 
         config: 

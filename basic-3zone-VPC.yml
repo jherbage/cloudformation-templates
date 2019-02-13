@@ -119,6 +119,30 @@ Resources:
           FromPort: '10250'
           ToPort: '10250'
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '6783'
+          ToPort: '6783'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: '6783'
+          ToPort: '6783'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: '6784'
+          ToPort: '6784'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '10010'
+          ToPort: '10010'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '30100'
+          ToPort: '30100'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '30101'
+          ToPort: '30101'
+          CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0

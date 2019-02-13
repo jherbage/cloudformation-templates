@@ -1,0 +1,78 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  BucketArn:
+    Description: BucketToDelete
+    Type: String
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal: {Service: [lambda.amazonaws.com]}
+          Action: ['sts:AssumeRole']
+      Path: /
+      ManagedPolicyArns:
+      - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+      - PolicyName: S3Policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 's3:*'
+              Resource: 
+                - !Join ['', ['arn:aws:s3:::', !Ref BucketArn, '/*']]
+                - !Join ['', ['arn:aws:s3:::', !Ref BucketArn]]
+      - PolicyName: lambdalogtocloudwatch
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'logs:CreateLogGroup'
+                - 'logs:CreateLogStream'
+                - 'logs:PutLogEvents'
+              Resource: 'arn:aws:logs:*:*:*' 
+  DeleteTempBucket:
+    Type: Custom::LambdaCallout
+    Properties:
+      ServiceToken: !GetAtt S3EmptyBucket.Arn
+      Region: !Ref "AWS::Region"
+      BucketArn: !Ref BucketArn
+  # Lambda function to empty TempS3Bucket so it can be deleted as part of the rollback
+  S3EmptyBucket:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Empties S3 bucket.
+      MemorySize: 128
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          def handler(event, context):
+            if event['RequestType'] == 'Create':  		  
+              s3client = boto3.client('s3', region_name=event['ResourceProperties']['Region'])
+              # Gte the bucket name from the ARN
+              bucket_name=event['ResourceProperties']['BucketArn'].replace('arn:aws:s3:::','')
+              list=s3client.list_objects_v2(Bucket=bucket_name)
+              for objectKey in list['Contents']:
+                s3client.delete_objects(
+                  Bucket=bucket_name,
+                  Delete={
+                    'Objects': [
+                      {"Key": objectKey['Key']}
+                               ]
+                  }
+                )
+              s3client.delete_bucket(Bucket=bucket_name)			
+            responseData = {}
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+      Timeout: 30
+      Runtime: python2.7

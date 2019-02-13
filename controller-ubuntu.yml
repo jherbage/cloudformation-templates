@@ -60,6 +60,9 @@ Parameters:
   LbDNSAddr:
     Description: Address for the Load Balancer
     Type: String
+  linuxUser:
+    Description: The linux user who will execute kubectl commands
+    Type: String
 Resources:
   RecoveryTestAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -150,7 +153,7 @@ Resources:
               source: "https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kubectl"
               group: root
               owner: user
-              mode: "000550"
+              mode: "000555"
             "/tmp/etcd-v3.3.5-linux-amd64.tar.gz":
               source: "https://github.com/coreos/etcd/releases/download/v3.3.5/etcd-v3.3.5-linux-amd64.tar.gz"
               group: root
@@ -327,9 +330,10 @@ Resources:
               command: 
                 !Sub |
                   kubectl config set-cluster kubernetes-the-hard-way --certificate-authority=ca.pem --embed-certs=true --server=https://${LbDNSAddr}:6443
-                  kubectl config set-credentials admin --client-certificate=/certs/admin.pem --client-key=/certs/admin-key.pem
+                  kubectl config set-credentials admin --client-certificate=admin.pem --client-key=admin-key.pem
                   kubectl config set-context kubernetes-the-hard-way --cluster=kubernetes-the-hard-way --user=admin
-                  kubectl config use-context kubernetes-the-hard-way				
+                  kubectl config use-context kubernetes-the-hard-way
+                  cp -pr /certs/.kube ~${linuxUser}/.	  
             bgenerateControllerKubeConfig:
               cwd: "/certs"
               command: 
@@ -573,7 +577,19 @@ Resources:
                   systemctl restart nginx
                   systemctl enable nginx
                   curl -H "Host: kubernetes.default.svc.cluster.local" -i http://127.0.0.1/healthz
-            iKubeRBACPermsSetup:
+            xRegisterWithLoadBalancer:
+              cwd: "/tmp"
+              command:
+                !Sub |
+                  aws elb register-instances-with-load-balancer --load-balancer-name ${ELBName} --region ${AWS::Region} --instances `curl http://169.254.169.254/latest/meta-data/instance-id`
+            yDontMoveOnTilControllerPlaneIsActive:
+              cwd: "/certs"
+              command:
+                !Sub |
+                  while [ `kubectl --kubeconfig admin.kubeconfig get componentstatuses | grep -c Healthy` -ne "5" ] ; do
+                    sleep 10
+                  done
+            zKubeRBACPermsSetup:
               cwd: "/certs"
               command:
                 !Sub |
@@ -600,7 +616,7 @@ Resources:
                       verbs:
                         - "*"
                   EOF
-                  cat << EOF | kubectl apply --kubeconfig admin.kubeconfig -f -
+                  cat << EOF | sudo kubectl apply --kubeconfig admin.kubeconfig -f -
                   apiVersion: rbac.authorization.k8s.io/v1beta1
                   kind: ClusterRoleBinding
                   metadata:
@@ -615,26 +631,18 @@ Resources:
                       kind: User
                       name: kubernetes
                   EOF
+                  # and a sleep at the end to let the cluster be set up before the ASG for workers are added
+                  sleep 90
               test: 
                 !Sub |
+                  # Need a sleep here to allow the cluster API to be ready to perform this check
+                  sleep 60
                   count=`kubectl get ClusterRole system:kube-apiserver-to-kubelet| grep -c AGE`
-                  if [ $count > 0 ]; then
+                  if [ $count -gt 0 ]; then
                     exit 1
                   else
                     exit 0
                   fi
-            yDontMoveOnTilControllerPlaneIsActive:
-              cwd: "/certs"
-              command:
-                !Sub |
-                  while [ `kubectl --kubeconfig admin.kubeconfig get componentstatuses | grep -c Healthy` -ne "5" ] ; do
-                    sleep 10
-                  done
-            zRegisterWithLoadBalancer:
-              cwd: "/tmp"
-              command:
-                !Sub |
-                  aws elb register-instances-with-load-balancer --load-balancer-name ${ELBName} --region ${AWS::Region} --instances `curl http://169.254.169.254/latest/meta-data/instance-id`
 Outputs:
   ControllerHostOut:
     Description: ControllerHost created

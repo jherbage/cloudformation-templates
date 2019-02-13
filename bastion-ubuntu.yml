@@ -36,6 +36,9 @@ Parameters:
   ELBPrivateIPRange:
     Description: The range of IP addresses the ELB could use
     Type: String
+  linuxUser:
+    Description: The linux user who will execute kubectl commands
+    Type: String
 Resources:
   BastionHost:
     Type: AWS::EC2::Instance
@@ -463,9 +466,10 @@ Resources:
               command: 
                 !Sub |
                   kubectl config set-cluster kubernetes-the-hard-way --certificate-authority=ca.pem --embed-certs=true --server=https://${LbDNSAddr}:6443
-                  kubectl config set-credentials admin --client-certificate=/certs/admin.pem --client-key=/certs/admin-key.pem
+                  kubectl config set-credentials admin --client-certificate=admin.pem --client-key=admin-key.pem
                   kubectl config set-context kubernetes-the-hard-way --cluster=kubernetes-the-hard-way --user=admin
                   kubectl config use-context kubernetes-the-hard-way
+                  cp -pr /certs/.kube ~${linuxUser}/.
             zcopyCerts:
               cwd: "/certs"
               command: 
@@ -486,6 +490,16 @@ Resources:
                     - !Ref CertsS3Bucket
                     - " --region "
                     - !Sub "${AWS::Region} --recursive --exclude='*' --include='encryption-config.yaml'"
+            zcopyKubeConfigToS3:
+              cwd: "/certs/.kube"
+              command: 
+                Fn::Join:
+                  - ""
+                  -
+                    - "aws s3 cp . s3://"
+                    - !Ref CertsS3Bucket
+                    - " --region "
+                    - !Sub "${AWS::Region} --recursive --exclude='*' --include='config'"
 
 Outputs:
   BastionHostOut:
