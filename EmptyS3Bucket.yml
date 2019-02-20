@@ -57,7 +57,7 @@ Resources:
           import boto3
           import cfnresponse
           def handler(event, context):
-            if event['RequestType'] == 'Create':  		  
+            if event['RequestType'] == 'Delete':  		  
               s3client = boto3.client('s3', region_name=event['ResourceProperties']['Region'])
               # Gte the bucket name from the ARN
               bucket_name=event['ResourceProperties']['BucketArn'].replace('arn:aws:s3:::','')

@@ -1,0 +1,38 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  ASGPolicy:
+    Description: ASG Policy Name
+    Type: String
+  CWMetric:
+    Description: Metric name
+    Type: String
+    Default: k8cluster.podCount
+  CWMetricNameSpace:
+    Description: Metric namespace
+    Type: String
+    Default: collectd
+  InstanceId:
+    Description: Instance ID of host for metric in alarm
+    Type: String
+Resources:
+  PodCountHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      EvaluationPeriods: '1'
+      Statistic: Average
+      Threshold: '4'
+      AlarmDescription: Alarm if metric is high
+      Period: '60'
+      AlarmActions:
+      - !Ref ASGPolicy
+      Namespace: !Ref CWMetricNameSpace
+      Dimensions:
+      - Name: FixedDimension
+        Value: K8Cluster
+      - Name: Host
+        Value: !Ref InstanceId
+      - Name: PluginInstance
+        Value: NONE
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: !Ref CWMetric

@@ -69,6 +69,10 @@ Parameters:
     Description: Port range for service addresses
     Type: String
     Default: '30000-32767'
+  K8ClusterName:
+    Description: Label name of the cluster
+    Type: String
+    Default: ACluster
 Resources:
   Roles:
     Type: AWS::CloudFormation::Stack
@@ -182,6 +186,7 @@ Resources:
         ELBName: !GetAtt LB.Outputs.LoadBalancerOut
         LbDNSAddr: !GetAtt LB.Outputs.LbDNSOut
         servicePortRange: !Ref KubernetesServicePortRange
+        K8ClusterName: !Ref K8ClusterName
         IpAddress1: 
           !Join
             - '.'
@@ -223,6 +228,7 @@ Resources:
         ELBName: !GetAtt LB.Outputs.LoadBalancerOut
         LbDNSAddr: !GetAtt LB.Outputs.LbDNSOut
         servicePortRange: !Ref KubernetesServicePortRange
+        K8ClusterName: !Ref K8ClusterName
         IpAddress1: 
           !Join
             - '.'
@@ -264,6 +270,7 @@ Resources:
         ELBName: !GetAtt LB.Outputs.LoadBalancerOut
         LbDNSAddr: !GetAtt LB.Outputs.LbDNSOut
         servicePortRange: !Ref KubernetesServicePortRange
+        K8ClusterName: !Ref K8ClusterName
         IpAddress1: 
           !Join
             - '.'
@@ -321,6 +328,7 @@ Resources:
         RepoUrl: 'https://raw.github.com/jherbage/KubernetesLambdaClientTest/master'
         CertsS3Bucket: !GetAtt CertBucket.Outputs.s3BucketOut
         TempS3Bucket: !GetAtt TempBucket.Outputs.s3BucketOut
+        WorkerASG: !GetAtt WorkerScalingGroup.Outputs.WorkerGroupOut
   EmptyCertsBucket:
     Type: AWS::CloudFormation::Stack
     DependsOn: SmokeTestK8Cluster
@@ -337,3 +345,44 @@ Resources:
       TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/EmptyS3Bucket.yml']]
       Parameters: 
         BucketArn: !GetAtt TempBucket.Outputs.s3BucketOut
+  ScalingPolicy:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: SmokeTestK8Cluster
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/ASGScalingPolicy.yml']]
+      Parameters: 
+        WorkerASG: !GetAtt WorkerScalingGroup.Outputs.WorkerGroupOut
+  ScalingAlarmA:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: ScalingPolicy
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/ASGScalingAlarm.yml']]
+      Parameters: 
+        ASGPolicy: !GetAtt ScalingPolicy.Outputs.ScalingPolicyOut
+        CWMetric: k8cluster.podCount
+        CWMetricNameSpace: collectd
+        InstanceId: !GetAtt ControllerHost1.Outputs.ControllerHostOut
+  ScalingAlarmB:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: ScalingPolicy
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/ASGScalingAlarm.yml']]
+      Parameters: 
+        ASGPolicy: !GetAtt ScalingPolicy.Outputs.ScalingPolicyOut
+        CWMetric: k8cluster.podCount
+        CWMetricNameSpace: collectd
+        InstanceId: !GetAtt ControllerHost2.Outputs.ControllerHostOut
+  ScalingAlarmC:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: ScalingPolicy
+    Properties:
+      TimeoutInMinutes: '60'
+      TemplateURL: !Join ['', [!Ref TemplateS3Bucket, '/ASGScalingAlarm.yml']]
+      Parameters: 
+        ASGPolicy: !GetAtt ScalingPolicy.Outputs.ScalingPolicyOut
+        CWMetric: k8cluster.podCount
+        CWMetricNameSpace: collectd
+        InstanceId: !GetAtt ControllerHost3.Outputs.ControllerHostOut

@@ -8,15 +8,15 @@ Parameters:
   TempS3Bucket:
     Description: Temporary S3 bucket name to store the fucntion zip
     Type: String
-    Default: k2-tempbucket-2iqvdyhtc551-s3bucket-1bm9i4fk83t8h
+    Default: k1-tempbucket-1w2fnbtsxqd9c-s3bucket-1q7o0i0ulcu6q
   CertsS3Bucket:
     Description: S3 Bucket where the kub config and certs are
     Type: String
-    Default: k2-certbucket-1smvvns9s4z6c-s3bucket-7po4iychofey
+    Default: k1-certbucket-16cf4iayyk5u0-s3bucket-p3nm4sd3t8kw
   WorkerASG:
     Description: The worker ASG for the K8 cluster
     Type: String
-    Default: k2-WorkerScalingGroup-1EM6DGOD6KYZ-WorkerScalingGroup-KH2YTKWK98PF
+    Default: k1-WorkerScalingGroup-5SXMNY30GUMK-WorkerScalingGroup-1UOR0LS9OD6E8
 Resources:
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -37,9 +37,8 @@ Resources:
           Statement:
             - Effect: Allow
               Action:
-                - 'autoscaling:DescribeAutoScalingGroups'
-                - 'autoscaling:DescribeAutoScalingInstances'
-                - 'ec2:DescribeInstances'
+                - 'autoscaling:*'
+                - 'ec2:*'
               Resource: 
                 - '*'
       - PolicyName: S3Policy

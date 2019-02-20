@@ -1,0 +1,21 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  WorkerASG:
+    Description: ASG Name
+    Type: String
+    Default: k1-WorkerScalingGroup-5SXMNY30GUMK-WorkerScalingGroup-1UOR0LS9OD6E8
+Resources:
+  ScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref WorkerASG
+      Cooldown: '1'
+      ScalingAdjustment: '1'
+Outputs:
+  ScalingPolicyOut:
+    Description: ASG policy created
+    Value: !Ref ScaleUpPolicy
+    Export:
+      Name: !Sub "${AWS::StackName}-ASGScalingPolicy"

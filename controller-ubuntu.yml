@@ -57,6 +57,9 @@ Parameters:
     Description: Kubernetes service port range
     Type: String
     Default: '30000-32767'
+  K8ClusterName:
+    Description: Label name of the cluster
+    Type: String
   LbDNSAddr:
     Description: Address for the Load Balancer
     Type: String
@@ -138,6 +141,7 @@ Resources:
               awscli: []
               jq: []
               nginx: []
+              collectd: []
           files: 
             "/usr/local/bin/cfssl":
               source: "https://pkg.cfssl.org/R1.2/cfssl_linux-amd64"
@@ -179,6 +183,121 @@ Resources:
               group: root
               owner: user
               mode: "000550"
+            "/tmp/setup.py":
+              source: "https://github.com/awslabs/collectd-cloudwatch/raw/master/src/setup.py"
+              group: root
+              owner: user
+              mode: "000775"
+            "/tmp/awslogs-agent-setup.py":
+              source: "https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py"
+              group: root
+              owner: user
+              mode: "000775"
+            "/tmp/AgentDependencies.tar.gz":
+              source: "https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/AgentDependencies.tar.gz"
+              group: root
+              owner: user
+              mode: "000550"
+            "/tmp/amazon-cloudwatch-agent.deb":
+              source: "https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb"
+              group: root
+              owner: user
+              mode: "000550"
+
+            "/tmp/aws-config":
+              mode: "000550"
+              group: root
+              owner: root			  
+              content:
+                 Fn::Join:
+                  - "\n"
+                  -
+                    - '[profile AmazonCloudWatchAgent]'
+                    - 'region = eu-west-2'
+            "/tmp/k8_monitors":
+              mode: "000550"
+              group: root
+              owner: root			  
+              content:
+                 Fn::Join:
+                  - ""
+                  -
+                    - "LoadPlugin exec\n"
+                    - "<Plugin exec>\n"
+                    - "Exec \""
+                    - !Ref linuxUser
+                    - "\" \"/tmp/get_pod_count.sh\"\n"
+                    - "</Plugin>\n"
+                    - "Include \"/etc/collectd-cloudwatch.conf\"\n"
+                    - "#LoadPlugin network\n"
+                    - "#<Plugin network>\n"
+                    - "#<Server \"127.0.0.1\" \"25827\">\n"
+                    - "#SecurityLevel none\n"
+                    - "#</Server>\n"
+                    - "#</Plugin>\n"
+            "/tmp/aws_cloudwatch_agent_config.json":
+              mode: "000550"
+              group: root
+              owner: root			  
+              content:
+                 Fn::Join:
+                  - "\n"
+                  -
+                    - '{'
+                    - '"metrics": {'
+                    - '"metrics_collected": {'
+                    - '"collectd": {'
+                    - '"metrics_aggregation_interval": 60,'
+                    - '"name_prefix": "collectd_",'
+                    - '"service_address":"udp://127.0.0.1:25827",'
+                    - '"collectd_security_level": "none"'
+                    - '			}'
+                    - '		}'
+                    - '	}'
+                    - '}'
+            "/tmp/k8_monitor_types":
+              mode: "000550"
+              group: root
+              owner: root			  
+              content:
+                 Fn::Join:
+                  - "\n"
+                  -
+                    - "podCount             value:GAUGE:0:U"
+            "/tmp/awslogs.conf":
+              mode: "000550"
+              group: root
+              owner: root			  
+              content:
+                 Fn::Join:
+                  - "\n"
+                  -
+                    - '[general]'
+                    - 'state_file = /var/awslogs/state/agent-state'
+            "/tmp/whitelist.conf":
+              mode: "000550"
+              group: root
+              owner: root			  
+              content:
+                 Fn::Join:
+                  - "\n"
+                  -
+                    - 'k8cluster-.*'
+            "/tmp/get_pod_count.sh":
+              mode: "000755"
+              group: root
+              owner: root			  
+              content:
+                Fn::Join:
+                  - "\n"
+                  -
+                    - '#!/bin/bash'
+                    - 'HOSTNAME="${COLLECTD_HOSTNAME:-localhost}"'
+                    - 'INTERVAL="${COLLECTD_INTERVAL:-60}"'
+                    - 'while sleep $INTERVAL; do'
+                    - 'val=$(sudo kubectl get pods --all-namespaces | grep -v kube-system | grep -vi AGE | wc -l)'
+                    - '  echo "PUTVAL \"$HOSTNAME/k8cluster/podCount\" interval=$INTERVAL N:$val"'
+                    - 'done'
             "/certs/ca-config.json":
               mode: "000550"
               group: root
@@ -643,6 +762,32 @@ Resources:
                   else
                     exit 0
                   fi
+            zinstallAwsLogs:
+              cwd: "/tmp"
+              command:
+                !Sub |
+                  tar xvf AgentDependencies.tar.gz -C /tmp/
+                  # configures awslogs
+                  python ./awslogs-agent-setup.py --region  ${AWS::Region} --non-interactive --configfile=awslogs.conf --dependency-path /tmp/AgentDependencies
+                  # installs collectd                
+                  apt install collectd -y
+                  # installs collectd awslogs plugin silently with a fixed dimension of k8cluster and its name
+                  python ./setup.py -I -c -v "K8Cluster"
+                  # add the exec plugin call to collectd.conf
+                  cat /tmp/k8_monitors >> /etc/collectd/collectd.conf
+                  # copy whitelist into place and restart collectd and awslogs
+                  cp /tmp/whitelist.conf /opt/collectd-plugins/cloudwatch/config/whitelist.conf
+                  # type for podCount
+                  cat /tmp/k8_monitor_types >> /usr/share/collectd/types.db
+                  # Do aws-cloudwatch instead - install and configure
+                  #dpkg -i -E ./amazon-cloudwatch-agent.deb
+                  #mkdir .aws
+                  #cp aws-config > .aws/config
+                  #/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:aws_cloudwatch_agent_config.json -s
+                  # add the exec plugin call to collectd.conf
+                  #cat /tmp/k8_monitors >> /etc/collectd/collectd.conf
+                  service awslogs restart
+                  service collectd restart
 Outputs:
   ControllerHostOut:
     Description: ControllerHost created
